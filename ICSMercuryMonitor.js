@@ -29,7 +29,7 @@ myerrors[BADSENSDATA] = 'Bad encoded sensor data';
 function sayError(i, str, obj) {
   if( i < 0 || i >= myerrors.length ) return;
   if( typeof str === "undefined" ) str = '';
-console.log('ERROR '+ i + ': ' + myerrors[i] + ' . ' + str);
+  console.log('ERROR '+ i + ': ' + myerrors[i] + ' . ' + str);
   if( typeof obj !== "undefined" ) console.log(obj);
 }
 
@@ -54,7 +54,7 @@ var client = new net.Socket();
 const ClientStates = {
     SLEEP: -1,
     NOT_CONNECTED: 0,
-  CONNECTED: 1,
+    CONNECTED: 1,
     DEVICES_SEARCH: 2,
     DEVICES_REQUEST: 3
 };
@@ -81,7 +81,7 @@ async function stateClientMOXA(newevent) {
           if( newevent == ClientEvents.TRY_TO_RUN ) {
               setState(ClientStates.NOT_CONNECTED);
               return stateClientMOXA();
-        }
+          }
           break;
     case ClientStates.NOT_CONNECTED :
           if( newevent == ClientEvents.CONNECT_SUCCESS ) {
@@ -171,7 +171,7 @@ function connect(){
 }
 
 function ask(dID) {
-    var outHex = Buffer.from([searchdevicecounter]).toString('hex')+'0102020202020202'; // open admin channel command
+    var outHex = Buffer.from([dID]).toString('hex')+'0102020202020202'; // open admin channel command
     var crcHex = ('0000'+crc16(hex_to_ascii(outHex)).toString(16)).slice(-4); // crc for this command
     var outgoingMessage = hex_to_ascii(outHex+crcHex.substr(2,2)+crcHex.substr(0,2));
     client.write(outgoingMessage);
@@ -187,9 +187,9 @@ var startmoment, endmoment;
 var reqtimeout;
 async function requestdata(d,cmd) {
     // enumerate commands
-    outHex = Buffer.from([DeviceIDs[d]]).toString('hex')+commands[cmd];
+    var outHex = Buffer.from([DeviceIDs[d]]).toString('hex')+commands[cmd];
     var crcHex = ('0000'+crc16(hex_to_ascii(outHex)).toString(16)).slice(-4);
-    outgoingMessage = hex_to_ascii(outHex+crcHex.substr(2,2)+crcHex.substr(0,2));
+    var outgoingMessage = hex_to_ascii(outHex+crcHex.substr(2,2)+crcHex.substr(0,2));
     //console.log('-------------------------------------\nMeter No '+ DeviceIDs[d] + ', cmd '+cmd+', sent: ' + outHex);
     startmoment = moment().valueOf();
     client.write(outgoingMessage);
@@ -204,7 +204,7 @@ function getMaxOfArray(arr){
     return arr.reduce( (a,b) => { return Math.max(a,b); } )
 }
 var dataCounter = 0;
-client.on('data', function(data) {
+client.on('data', function(data) { // not asyncchronous!!
     endmoment = moment().valueOf();
     //console.log("TEST"+Buffer.byteLength(data)+" = "+data.length);
     //console.log('RECEIVED COMMAND '+runningcommand+': ' + data.slice(0, data.length-2).toString('hex'), ', searchdevicecounter = '+searchdevicecounter);
@@ -224,7 +224,6 @@ client.on('data', function(data) {
         sayError(CRCFAIL, er, {datalen : data.length});
         return;
         }
-
 
     // filling deviceID table mode
     if (clientState == ClientStates.DEVICES_SEARCH ) {
@@ -254,7 +253,7 @@ client.on('data', function(data) {
         }
 
     var msg = {devEui: 'SMARTMETER' + opts.moxa.name
-                  + ('000000'+data.readUInt8(0).toString(10)).slice(-6) };
+                  + ('000000'+dID.toString(10)).slice(-6) };
 
     //console.log('Parsing command '+ runningcommand +'...');
     var curcommand = -1;
@@ -299,7 +298,7 @@ client.on('data', function(data) {
       return;
     }
     var datatosend = {ts: moment().valueOf(), devEui: msg.devEui, values: sensordata};
-    //iot.sendevent(opts.iotservers, msg.devEui, datatosend);
+    iot.sendevent(opts.iotservers, msg.devEui, datatosend);
 });
 
 // Add a 'close' event handler for the client socket
@@ -309,6 +308,12 @@ client.on('close', function() {
   clearInterval(stateInterval);
   setTimeout(stateClientMOXA,1000,ClientEvents.LOST_CONNECTION);
   });
+client.on('end', function(){
+  console.log('Other side send FIN packet');
+  clearInterval(devicesInterval);
+  clearInterval(stateInterval);
+  setTimeout(stateClientMOXA,1000,ClientEvents.LOST_CONNECTION);
+  })
 client.on('error', function(err) {
   console.log(err)
   sayError(ERROR,'Socket client',err);
@@ -321,29 +326,37 @@ process.on('SIGTERM',()=>{
   process.exit();
   });
 process.on('SIGINT',()=>{
-  console.log('INT, reload config');
-  readOptions();
+  console.log('INT, then emit TERM');
   clearInterval(devicesInterval);
   clearInterval(stateInterval);
-  setTimeout(stateClientMOXA,1000,ClientEvents.LOST_CONNECTION);
+  //setTimeout(stateClientMOXA,1000,ClientEvents.LOST_CONNECTION);
+  process.emit('SIGTERM');
+  });
+process.on('uncaughtException', (err,origin)=>{
+  fs.writeSync(
+    process.stderr.fd,
+    `Caught exception: ${err}\n` +
+    `Exception origin: ${origin}`
+  );
+  process.emit('SIGINT');
   });
 
 function hex_to_ascii(str){
-        return Buffer.from(str, 'hex');
-}
+  return Buffer.from(str, 'hex');
+  }
 // read 3-byte Int from the string starting from offset
 function read4byteUInt(data, offset) {
   //console.log('read4byteUInt');
   return (data.readUInt16LE(offset) <<16) + data.readUInt16LE(offset+2);
-}
+  }
 function read3byteUInt(data, offset) {
   //console.log('read3byteUInt');
   return (data.readUInt8(offset) <<16) + data.readUInt16LE(offset+1);
-}
+  }
 function readPowerValue(data, offset, powertype) {
   //console.log('readPowerValue');
   var p = ((data.readUInt8(offset)&0x3F) <<16) + data.readUInt16LE(offset+1);
   //      if ((data.readUInt8(offset)&0x80)!=0 && powertype=='P') { p *= -1; }
   if ((data.readUInt8(offset)&0x40)==0 && powertype=='Q') { p *= -1; }
   return p;
-}
+  }
