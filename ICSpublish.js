@@ -216,7 +216,7 @@ function sendevent(iotservers, devEui, datatosend) {
         });
       } else if (iotserver.type == 'greenpl'){
         console.log("Sending to GreenPL (host:" + iotserver.host + ")");
-        if ( GreenPL.hasOwnProperty(client) ){
+        if ( GreenPL.hasOwnProperty('client') ){
           GreenPL.client.publish('/devices/' + devEui, valuesjson, {"qos": 1, "retain": false},
               function (error, response) {
                   // print response to console
