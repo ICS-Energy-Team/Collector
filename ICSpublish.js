@@ -21,6 +21,7 @@ var startts;
 
 
 var devices = {};
+var GreenPL = {};
 function sendevent(iotservers, devEui, datatosend) {
     var json = JSON.stringify(datatosend,null,2);
     var valuesjson = JSON.stringify(datatosend.values,null,2);
@@ -214,51 +215,57 @@ function sendevent(iotservers, devEui, datatosend) {
         });
       } else if (iotserver.type == 'greenpl'){
         console.log("Sending to GreenPL (host:" + iotserver.host + ")");
-        let GreenPLClient = mqtt.connect('mqtt://' + iotserver.host,
-            {username:iotserver.token, password:'1'}
-            );
-        GreenPLClient.on('connect', function () {
-          console.log('GreenPL says connect');
-          GreenPLClient.publish('/devices/' + devEui, valuesjson, {"qos": 1, "retain": false},
+        if ( GreenPL.hasOwnProperty(client) ){
+          GreenPL.client.publish('/devices/' + devEui, valuesjson, {"qos": 1, "retain": false},
               function (error, response) {
                   // print response to console
                   console.log(response);
                   // if function was returned error then we printing this error to console
-        	        if (error) { console.log(error); }
-                  GreenPLClient.end();
-                  });
+        	        if (error) {
+                    console.log(error+'.\n Close client');
+                    GreenPL.client.end();
+                    delete GreenPL['client'];
+                    }
               });
+        } else {
+          GreenPL.client = mqtt.connect('mqtt://' + iotserver.host,
+              {username:iotserver.token, password:'1'}
+              );
+          GreenPL.client.on('connect', function () {
+            console.log('GreenPL says connect');
+            GreenPL.client.publish('/devices/' + devEui, valuesjson, {"qos": 1, "retain": false},
+                function (error, response) {
+                    // print response to console
+                    console.log(response);
+                    // if function was returned error then we printing this error to console
+                    if (error) {
+                      console.log(error+'.\n Close client');
+                      GreenPL.client.end();
+                      delete GreenPL['client'];
+                    }
+                    });
+                });
 
-        GreenPLClient.on('message', function (topic, message) {
-          console.log('Response from GreenPL server: '+ message.toString());
-          GreenPLClient.end();
+          GreenPL.client.on('message', function (topic, message) {
+            console.log('Response from GreenPL server: '+ message.toString());
+            });
+          GreenPL.client.on('error', function (error) {
+            console.log('Could not connect to GreenPL server with error: "'+error+'"');
+            console.log('Flush MQTT channel to GreenPL server');
+            GreenPL.client.end();
+            delete GreenPL['client'];
           });
-        GreenPLClient.on('reconnect', function () {
-          console.log('GreenPL says reconnect');
-          GreenPLClient.end();
-          });
-
-        GreenPLClient.on('error', function (error) {
-          console.log('Could not connect to GreenPL server with error: "'+error+'"');
-          console.log('Flush MQTT channel to GreenPL server');
-          GreenPLClient.end();
-        });
-        GreenPLClient.on('end', function () {
-          console.log('GreenPL says end');
-          GreenPLClient.end();
-          });
-        GreenPLClient.on('offline', function () {
-          console.log('GreenPL says offline');
-          GreenPLClient.end();
-          });
-        GreenPLClient.on('disconnect', function (p) {
-          console.log('GreenPL says disconnect '+p);
-          GreenPLClient.end();
-          });
-        GreenPLClient.on('close', function () {
-          console.log('GreenPL says close');
-          GreenPLClient.end();
-          });
+          GreenPL.client.on('offline', function () {
+            console.log('GreenPL says offline');
+            });
+          GreenPL.client.on('disconnect', function (p) {
+            console.log('GreenPL says disconnect '+p);
+            });
+          GreenPL.client.on('close', function () {
+            console.log('GreenPL says close');
+            GreenPL.client.end();
+            delete GreenPL['client'];
+            });
       } else {
           console.log('! Unknown IoT server type ' + iotserver.type);
       }
