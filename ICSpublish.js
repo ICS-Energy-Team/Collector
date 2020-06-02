@@ -256,8 +256,10 @@ function sendevent(iotservers, devEui, datatosend) {
             });
           GreenPL.client.on('close', function () {
             console.log('GreenPL says close');
-            GreenPL.client.end();
-            delete GreenPL['client'];
+            if ( GreenPL.hasOwnProperty('client') ){
+              GreenPL.client.end();
+              delete GreenPL['client'];
+              }
             });
         }
       } else {
