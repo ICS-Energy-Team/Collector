@@ -7,6 +7,7 @@ const fs = require('fs');
 exports.sendevent = sendevent;
 exports.closeconnectors = closeconnectors;
 
+/* for 'memory' IoT server :)*/
 const FileDump = {
     timer: 60000,//3600000, // hour in msec
     datainterval: 1, //sec
@@ -266,6 +267,7 @@ function sendevent(iotservers, devEui, datatosend) {
             GreenPL.client.end();
             delete GreenPL['client'];
             });
+        }
       } else {
           console.log('! Unknown IoT server type ' + iotserver.type);
       }
