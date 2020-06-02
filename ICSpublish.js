@@ -222,11 +222,7 @@ function sendevent(iotservers, devEui, datatosend) {
                   // print response to console
                   console.log(response);
                   // if function was returned error then we printing this error to console
-        	        if (error) {
-                    console.log(error+'.\n Close client');
-                    GreenPL.client.end();
-                    delete GreenPL['client'];
-                    }
+        	        if (error) { console.log(error); }
               });
         } else {
           GreenPL.client = mqtt.connect('mqtt://' + iotserver.host,
@@ -239,11 +235,7 @@ function sendevent(iotservers, devEui, datatosend) {
                     // print response to console
                     console.log(response);
                     // if function was returned error then we printing this error to console
-                    if (error) {
-                      console.log(error+'.\n Close client');
-                      GreenPL.client.end();
-                      delete GreenPL['client'];
-                    }
+                    if (error) { console.log(error); }
                     });
                 });
 
