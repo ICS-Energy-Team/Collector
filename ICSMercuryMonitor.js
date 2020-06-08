@@ -6,10 +6,13 @@
   vkorepanov@ipu.ru
 */
 
+const CollectorName = "MercuryMonitor v. 1.11";
+const moment = require('moment');
+console.log("Hello! Starting " + CollectorName + " at " + moment().format("DD MMM YYYY, HH:mm:ss"));
+
 const net = require('net');
 const crc16 = require('crc').crc16modbus;
 
-const moment = require('moment');
 var iot = require('./ICSpublish.js');
 
 var opts;// = require('./'+process.argv[2]);
@@ -45,7 +48,7 @@ function sayLog(i,str,obj) {
 
 // MOXA
 
-var runningcommand = 0;
+var runningcommand = -1;
 var runningdevice = 0;
 var DeviceIDs = [];
 var RequestedDevices = [];
@@ -136,9 +139,15 @@ async function stateClientMOXA(newevent) {
           if( newevent == ClientEvents.DEVICES_START_REQUEST || stateChanged ){
               if( stateChanged ) {
                   stateChanged = false;
+                  // запрос данных каждые opts.moxa.delay2 мс
                   dataInterval = setInterval(stateClientMOXA, opts.moxa.delay2, ClientEvents.DEVICES_START_REQUEST);
                   }
-              if( RequestedDevices.length ) {
+              if( RequestedDevices.length == DeviceIDs.length ){
+                  sayError(ERROR,"All devices doesn't respond, close connection, end");
+                  process.emit('SIGTERM');
+                  return;
+                }
+              else if( RequestedDevices.length ) {
                   sayLog(LOG,'not responsed RequestedDevices: ' + RequestedDevices);
               }
               RequestedDevices = [];
@@ -149,7 +158,6 @@ async function stateClientMOXA(newevent) {
           if ( runningdevice >= DeviceIDs.length ) {return;}
 
           requestdata(runningdevice,runningcommand);
-          // запрос данных каждые opts.moxa.delay2 мс
           stateInterval = setInterval(stateClientMOXA, cmdtimeouts[runningcommand]);
           runningdevice++;
           dataCounter++;
@@ -184,7 +192,6 @@ var commands = ['0816A0', '056000'];//,'150000']; // 0: моментальные
 var cmdsnum = commands.length;
 var cmdtimeouts = [150,150,150];
 var startmoment, endmoment;
-var reqtimeout;
 async function requestdata(d,cmd) {
     // enumerate commands
     var outHex = Buffer.from([DeviceIDs[d]]).toString('hex')+commands[cmd];
@@ -232,7 +239,6 @@ client.on('data', function(data) { // not asyncchronous!!
         }
 
     // ok we have sensor data receive mode
-
     if( ! DeviceIDs.includes(dID) ) {
         sayError(ERROR,'dID not in DeviceIDs');
         return;

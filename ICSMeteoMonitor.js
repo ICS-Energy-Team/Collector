@@ -6,9 +6,11 @@
   vkorepanov@ipu.ru
 */
 
-const net = require('net');
-
+const CollectorName = "MeteoMonitor v. 0.30";
 const moment = require('moment');
+console.log("Hello! Starting " + CollectorName + " at " + moment().format("DD MMM YYYY, HH:mm:ss"));
+
+const net = require('net');
 var iot = require('./ICSpublish.js');
 
 var opts;// = require('./'+process.argv[2]);
@@ -48,13 +50,15 @@ MPVmeteo = opts.meteo.find( (el) => { return el.model == "MPV-702"; });
 var client = new net.Socket();
 
 function connect(){
+    console.log( "try to connect to " + MPVmeteo.port +':'+ MPVmeteo.host );
     client.connect(MPVmeteo.port, MPVmeteo.host,
       ()=>{console.log('CONNECTED TO: '+MPVmeteo.host+':'+MPVmeteo.port);});
     }
+
+// It starts.
 connect();
 
-var startmoment, endmoment;
-var datacount = 0;
+var endmoment;
 var datatosend;
 // Add a 'data' event handler for the client socket
 // data is what the server sent to this socket
@@ -75,7 +79,6 @@ client.on('data', function(data) {
 */
 
     // parse data
-    datacount += 1;
     //console.log(endmoment);
     const datastr = data.toString();
     //console.log(datastr);
@@ -96,7 +99,6 @@ client.on('data', function(data) {
         }
     }
 
-    console.log(sensordata.toString());
     /*sensordata = {  PT: readPowerValue(data, 1, 'P')/100,   P1: readPowerValue(data, 4, 'P')/100,   P2:readPowerValue(data, 7, 'P')/100,
                     P3: readPowerValue(data, 10, 'P')/100,  QT: readPowerValue(data, 13, 'Q')/100,  Q1:readPowerValue(data, 16, 'Q')/100,
                     Q2: readPowerValue(data, 19, 'Q')/100,  Q3: readPowerValue(data, 22, 'Q')/100,  ST:readPowerValue(data, 25, 'S')/100,
@@ -118,12 +120,24 @@ client.on('data', function(data) {
     iot.sendevent(opts.iotservers, datatosend.devEui, datatosend);
 });
 
+// check data income
+var lastCheckTime = moment().valueOf();
+const checkPeriod = 30000; // 30 sec
+function checkIncome(){
+   if ( moment().valueOf() - endmoment > checkPeriod ){
+     sayError(ERROR, "client doesn't send packets more than " + checkPeriod + 'ms');
+     process.emit('SIGTERM');
+   }
+}
+setInterval(checkIncome,checkPeriod);
+
+
+
 // Add a 'close' event handler for the client socket
-client.on('close', function() {
-    console.log('Connection closed');
-    clearInterval(devicesInterval);
-    clearInterval(stateInterval);
-    setTimeout(stateClientMOXA,1000,ClientEvents.LOST_CONNECTION);
+client.on('close', function(hadError) {
+    if( hadError ){ console.log('socket had transmission error'); }
+    console.log('Connection closed. Exit');
+    process.emit('SIGTERM');
     });
 client.on('error', function(err) {
     console.log(err)
@@ -139,9 +153,6 @@ process.on('SIGTERM',()=>{
 process.on('SIGINT',()=>{
     //  console.log('INT, reload config');
     //  readOptions();
-    console.log('INT');
-    client.end();
-    client.destroy();
-    iot.closeconnectors();
-    process.exit();
+    console.log('INT, exit.');
+    process.emit('SIGTERM');
     });

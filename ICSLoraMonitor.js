@@ -13,6 +13,11 @@
   www.elsys.se
   peter@elsys.se
 */
+
+const CollectorName = "LoraMonitor v. 1.00";
+const moment = require('moment');
+console.log("Hello! Starting " + CollectorName + " at " + moment().format("DD MMM YYYY, HH:mm:ss"));
+
 const TYPE_TEMP = 0x01; //temp 2 bytes -3276.8°C -->3276.7°C
 const TYPE_RH = 0x02; //Humidity 1 byte  0-100%
 const TYPE_ACC = 0x03; //acceleration 3 bytes X,Y,Z -128 --> 127 +/-63=1G
@@ -40,7 +45,6 @@ const TYPE_ANALOG2 = 0x18; //2bytes voltage in mV
 const TYPE_EXT_TEMP2 = 0x19; //2bytes -3276.5C-->3276.5C
 
 const WebSocket = require('websocket').w3cwebsocket;
-const moment = require('moment');
 var opts = require('./'+process.argv[2]);
 var iot = require('./ICSpublish.js');
 
