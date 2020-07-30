@@ -1,12 +1,12 @@
 //'use strict';
 
 /*
-  Mercury simple payload decoder.
+  Mercury 234 simple payload decoder.
   Use it as it is or remove the bugs :)
   vkorepanov@ipu.ru
 */
 
-const CollectorName = "MercuryMonitor v. 1.11";
+const CollectorName = "MercuryMonitor v. 1.2";
 const moment = require('moment');
 console.log("Hello! Starting " + CollectorName + " at " + moment().format("DD MMM YYYY, HH:mm:ss"));
 
@@ -50,7 +50,7 @@ function sayLog(i,str,obj) {
 
 var runningcommand = -1;
 var runningdevice = 0;
-var DeviceIDs = [];
+var DeviceIDs = [], newDeviceIDs;
 var RequestedDevices = [];
 
 var client = new net.Socket();
@@ -61,6 +61,7 @@ const ClientStates = {
     DEVICES_SEARCH: 2,
     DEVICES_REQUEST: 3
 };
+const ClientSubStates = { BASE: 0, LONGSEARCH: 1 };
 const ClientEvents = {
     TRY_TO_RUN: 1000,
     CONNECT_SUCCESS: 1001,
@@ -70,9 +71,9 @@ const ClientEvents = {
     DEVICES_START_SEARCH: 1005
 };
 const MIN_DEVICE_ID = 1, MAX_DEVICE_ID = 255;
-var searchdevicecounter;
+var searchdevicecounter, longsearchdevcnt;
 var stateInterval;
-var clientState = ClientStates.SLEEP, stateChanged = false;
+var clientState = ClientStates.SLEEP, stateChanged = false, subState = ClientSubStates.BASE;
 function setState(newstate) {
     stateChanged = clientState != newstate;
     clientState = newstate;
@@ -100,23 +101,23 @@ async function stateClientMOXA(newevent) {
           connect();
           break;
     case ClientStates.DEVICES_SEARCH :
-          if( newevent == ClientEvents.LOST_CONNECTION ){
+          if( newevent == ClientEvents.LOST_CONNECTION ) {
               clearInterval(stateInterval);
               setState(ClientStates.NOT_CONNECTED);
               return stateClientMOXA();
               }
-          else if( newevent == ClientEvents.DEVICES_FOUND || searchdevicecounter > MAX_DEVICE_ID ){
+          else if( newevent == ClientEvents.DEVICES_FOUND || searchdevicecounter > MAX_DEVICE_ID ) {
               clearInterval(stateInterval);
-              DeviceIDs = [...new Set(DeviceIDs)]; // get only unique IDs
+              DeviceIDs = [...new Set(newDeviceIDs)]; // get only unique IDs
               console.log("Found "+DeviceIDs.length+" devices: "+DeviceIDs);
               setState(ClientStates.DEVICES_REQUEST);
               return stateClientMOXA();
               }
           // fill the device list by trying to admin connect to each device with interval opts.moxa.delay1
           // loop all possible device ids
-          if( stateChanged ){
+          if( stateChanged ) {
               stateChanged = false;
-              DeviceIDs = [];
+              DeviceIDs = []; newDeviceIDs = [];
               searchdevicecounter = MIN_DEVICE_ID;
               clearInterval(stateInterval);
               stateInterval = setInterval(stateClientMOXA,opts.moxa.delay1);
@@ -137,8 +138,10 @@ async function stateClientMOXA(newevent) {
               return stateClientMOXA();
               }
           if( newevent == ClientEvents.DEVICES_START_REQUEST || stateChanged ){
+              subState = ClientSubStates.BASE;
               if( stateChanged ) {
                   stateChanged = false;
+                  longsearchdevcnt = MIN_DEVICE_ID;
                   // запрос данных каждые opts.moxa.delay2 мс
                   dataInterval = setInterval(stateClientMOXA, opts.moxa.delay2, ClientEvents.DEVICES_START_REQUEST);
                   }
@@ -146,21 +149,45 @@ async function stateClientMOXA(newevent) {
                   sayError(ERROR,"All devices doesn't respond, close connection, end");
                   process.emit('SIGTERM');
                   return;
-                }
+                  }
               else if( RequestedDevices.length ) {
-                  sayLog(LOG,'not responsed RequestedDevices: ' + RequestedDevices);
-              }
+                  sayLog(LOG,'not responsed RequestedDevices: ' + RequestedDevices + ', all:' + DeviceIDs);
+                  }
               RequestedDevices = [];
               runningdevice = 0;
               runningcommand = 0;
-              console.log('REQUEST ALL DEVICES...');
+              console.log('REQUEST ALL ' + DeviceIDs.length + ' DEVICES: ' + DeviceIDs);
               }
-          if ( runningdevice >= DeviceIDs.length ) {return;}
-
-          requestdata(runningdevice,runningcommand);
-          stateInterval = setInterval(stateClientMOXA, cmdtimeouts[runningcommand]);
-          runningdevice++;
-          dataCounter++;
+          if ( subState == ClientSubStates.BASE ) {
+              if ( runningdevice >= DeviceIDs.length ) {
+                subState = ClientSubStates.LONGSEARCH;
+                newDeviceIDs = [];
+                if ( longsearchdevcnt > MAX_DEVICE_ID ) longsearchdevcnt = MIN_DEVICE_ID;
+                ask(longsearchdevcnt);
+                longsearchdevcnt++;
+                stateInterval = setInterval(stateClientMOXA,opts.moxa.delay1);
+                return;
+                }
+              requestdata(runningdevice,runningcommand);
+              stateInterval = setInterval(stateClientMOXA, cmdtimeouts[runningcommand]);
+              runningdevice++;
+              dataCounter++;
+              }
+          else if( subState == ClientSubStates.LONGSEARCH ){
+              if ( newDeviceIDs.length == 0 ){ // didn't respond
+                if( DeviceIDs.includes(longsearchdevcnt-1) ){
+                  DeviceIDs.splice(DeviceIDs.indexOf(longsearchdevcnt-1),1); // remove not responded device
+                  }
+                }
+              else if ( newDeviceIDs.length == 1 ) {
+                if ( !DeviceIDs.includes(newDeviceIDs[0]) ){
+                  DeviceIDs.push(newDeviceIDs[0]);
+                  }
+                }
+              else {
+                sayLog(LOG, "Found >1 devices when substate is long search");
+                }
+              }
           break;
     default :
           break;
@@ -232,11 +259,11 @@ client.on('data', function(data) { // not asyncchronous!!
         return;
         }
 
-    // filling deviceID table mode
-    if (clientState == ClientStates.DEVICES_SEARCH ) {
-        DeviceIDs.push(dID);
-        return;
-        }
+    // for filling deviceID table mode
+    newDeviceIDs.push(dID);
+    if ( clientState == ClientStates.DEVICES_SEARCH
+      || (clientState == ClientStates.DEVICES_REQUEST && subState == ClientSubStates.LONGSEARCH) )
+      return;
 
     // ok we have sensor data receive mode
     if( ! DeviceIDs.includes(dID) ) {
