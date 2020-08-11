@@ -7,7 +7,7 @@ const fs = require('fs');
 exports.sendevent = sendevent;
 exports.closeconnectors = closeconnectors;
 
-/* for 'memory' IoT server :)*/
+/* for 'memory' IoT server :) */
 const FileDump = {
     timer: 60000,//3600000, // hour in msec
     datainterval: 1, //sec
@@ -23,10 +23,11 @@ var startts;
 
 var devices = {};
 var GreenPL = {};
-function sendevent(iotservers, devEui, datatosend) {
+async function sendevent(iotservers, devEui, datatosend) {
     var json = JSON.stringify(datatosend,null,2);
     var valuesjson = JSON.stringify(datatosend.values,null,2);
-    console.log('Device ID ' + devEui +': data "'  + json + '" sent to: \n');
+    //console.log('Device ID ' + devEui +': data "'  + json + '" sent to: \n');
+    console.log('Device ID ' + devEui +' of timestamp '  + datatosend.ts + ' sent to:');
 
     //for all destinations
     iotservers.forEach(function(iotserver) {
@@ -191,7 +192,7 @@ function sendevent(iotservers, devEui, datatosend) {
         //attreq.write(valuesjson);
         //attreq.end(valuesjson);
         //telereq.write(json);
-        console.log(iotserver.type + ' server at ' + iotserver.host + ":" + iotserver.port);
+        console.log('  ' + iotserver.type + ' server at ' + iotserver.host + ":" + iotserver.port);
       } else if (iotserver.type == 'azure') {
         let AzureConnectionString = 'HostName='+iotserver.host+'.azure-devices.net;DeviceId='+devEui+';SharedAccessKey='+devEui+devEui;
         console.log('Sending to Azure ' +AzureConnectionString);
@@ -215,7 +216,7 @@ function sendevent(iotservers, devEui, datatosend) {
             }
         });
       } else if (iotserver.type == 'greenpl'){
-        console.log("Sending to GreenPL (host:" + iotserver.host + ")");
+        console.log("  Sending to GreenPL (host:" + iotserver.host + ")");
         if ( GreenPL.hasOwnProperty('client') ){
           GreenPL.client.publish('/devices/' + devEui, valuesjson, {"qos": 1, "retain": false},
               function (error, response) {

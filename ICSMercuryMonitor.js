@@ -6,7 +6,7 @@
   vkorepanov@ipu.ru
 */
 
-const CollectorName = "MercuryMonitor v. 1.2";
+const CollectorName = "MercuryMonitor v. 1.3";
 const moment = require('moment');
 console.log("Hello! Starting " + CollectorName + " at " + moment().format("DD MMM YYYY, HH:mm:ss"));
 
@@ -18,6 +18,7 @@ var iot = require('./ICSpublish.js');
 var opts;// = require('./'+process.argv[2]);
 function readOptions () {
   opts = require('./'+process.argv[2]);
+  // need static options check
 }
 readOptions();
 
@@ -67,26 +68,21 @@ const ClientEvents = {
     CONNECT_SUCCESS: 1001,
     LOST_CONNECTION: 1002,
     DEVICES_FOUND: 1003,
-    DEVICES_START_REQUEST: 1004,
-    DEVICES_START_SEARCH: 1005
+    DEVICES_START_REQUEST: 1004
 };
-const MIN_DEVICE_ID = 1, MAX_DEVICE_ID = 255;
+const MIN_DEVICE_ID = 1, MAX_DEVICE_ID = 240;
 var searchdevicecounter, longsearchdevcnt;
-var stateInterval;
+var stateInterval, dataInterval;
 var clientState = ClientStates.SLEEP, stateChanged = false, subState = ClientSubStates.BASE;
 function setState(newstate) {
     stateChanged = clientState != newstate;
     clientState = newstate;
 }
-stateClientMOXA(ClientEvents.TRY_TO_RUN);
+setState(ClientStates.NOT_CONNECTED);
+stateClientMOXA();
+
 async function stateClientMOXA(newevent) {
     switch (clientState) {
-    case ClientStates.SLEEP :
-          if( newevent == ClientEvents.TRY_TO_RUN ) {
-              setState(ClientStates.NOT_CONNECTED);
-              return stateClientMOXA();
-          }
-          break;
     case ClientStates.NOT_CONNECTED :
           if( newevent == ClientEvents.CONNECT_SUCCESS ) {
               clearInterval(stateInterval);
@@ -96,7 +92,7 @@ async function stateClientMOXA(newevent) {
           if( stateChanged ){
               stateChanged = false;
               clearInterval(stateInterval);
-              stateInterval = setInterval(stateClientMOXA,5000/*5sec*/);
+              stateInterval = setInterval(stateClientMOXA,5000/*each 5sec try to connect*/);
               }
           connect();
           break;
@@ -132,11 +128,6 @@ async function stateClientMOXA(newevent) {
               setState(ClientStates.NOT_CONNECTED);
               return stateClientMOXA();
               }
-          else if ( newevent == ClientEvents.DEVICES_START_SEARCH ) {
-              clearInterval(dataInterval);
-              setState(ClientStates.DEVICES_SEARCH);
-              return stateClientMOXA();
-              }
           if( newevent == ClientEvents.DEVICES_START_REQUEST || stateChanged ){
               subState = ClientSubStates.BASE;
               if( stateChanged ) {
@@ -163,6 +154,7 @@ async function stateClientMOXA(newevent) {
                 subState = ClientSubStates.LONGSEARCH;
                 newDeviceIDs = [];
                 if ( longsearchdevcnt > MAX_DEVICE_ID ) longsearchdevcnt = MIN_DEVICE_ID;
+                sayLog(0,"ASK "+longsearchdevcnt);
                 ask(longsearchdevcnt);
                 longsearchdevcnt++;
                 stateInterval = setInterval(stateClientMOXA,opts.moxa.delay1);
@@ -171,21 +163,23 @@ async function stateClientMOXA(newevent) {
               requestdata(runningdevice,runningcommand);
               stateInterval = setInterval(stateClientMOXA, cmdtimeouts[runningcommand]);
               runningdevice++;
-              dataCounter++;
               }
           else if( subState == ClientSubStates.LONGSEARCH ){
-              if ( newDeviceIDs.length == 0 ){ // didn't respond
-                if( DeviceIDs.includes(longsearchdevcnt-1) ){
-                  DeviceIDs.splice(DeviceIDs.indexOf(longsearchdevcnt-1),1); // remove not responded device
+              /*if ( newDeviceIDs.length == 0 ){ // didn't respond
+                let di = DeviceIDs.indexOf(longsearchdevcnt-1);
+                if( di > -1 ){
+                  DeviceIDs.splice(di,1); // remove not responded device
                   }
                 }
-              else if ( newDeviceIDs.length == 1 ) {
+              else */
+              if ( newDeviceIDs.length == 1 ) {
+                sayLog(LOG, "Add Device ID=" + newDeviceIDs[0]);
                 if ( !DeviceIDs.includes(newDeviceIDs[0]) ){
                   DeviceIDs.push(newDeviceIDs[0]);
                   }
                 }
               else {
-                sayLog(LOG, "Found >1 devices when substate is long search");
+                sayLog(LOG, "Found " + newDeviceIDs.length + " devices when substate is LONGSEARCH");
                 }
               }
           break;
@@ -194,9 +188,6 @@ async function stateClientMOXA(newevent) {
     }
 
 }// stateClientMOXA
-
-var devicesInterval = setInterval(stateClientMOXA, opts.moxa.refreshDevicesDelay, ClientEvents.DEVICES_START_SEARCH);
-var dataInterval;
 
 function connect(){
     client.connect(opts.moxa.port, opts.moxa.host, function() {
@@ -233,12 +224,7 @@ async function requestdata(d,cmd) {
 
 // Add a 'data' event handler for the client socket
 // data is what the server sent to this socket
-var rcvtime = [[],[]];
-function getMaxOfArray(arr){
-    return arr.reduce( (a,b) => { return Math.max(a,b); } )
-}
-var dataCounter = 0;
-client.on('data', function(data) { // not asyncchronous!!
+client.on('data', function(data) { // not asynchronous!!
     endmoment = moment().valueOf();
     //console.log("TEST"+Buffer.byteLength(data)+" = "+data.length);
     //console.log('RECEIVED COMMAND '+runningcommand+': ' + data.slice(0, data.length-2).toString('hex'), ', searchdevicecounter = '+searchdevicecounter);
@@ -337,19 +323,18 @@ client.on('data', function(data) { // not asyncchronous!!
 // Add a 'close' event handler for the client socket
 client.on('close', function() {
   console.log('Connection closed');
-  clearInterval(devicesInterval);
   clearInterval(stateInterval);
-  setTimeout(stateClientMOXA,1000,ClientEvents.LOST_CONNECTION);
+  setTimeout(stateClientMOXA,100,ClientEvents.LOST_CONNECTION);
   });
 client.on('end', function(){
   console.log('Other side send FIN packet');
-  clearInterval(devicesInterval);
   clearInterval(stateInterval);
-  setTimeout(stateClientMOXA,1000,ClientEvents.LOST_CONNECTION);
+  setTimeout(stateClientMOXA,100,ClientEvents.LOST_CONNECTION);
   })
 client.on('error', function(err) {
   console.log(err)
   sayError(ERROR,'Socket client',err);
+  process.emit('SIGINT');
   });
 process.on('SIGTERM',()=>{
   console.log('TERM');
@@ -360,18 +345,23 @@ process.on('SIGTERM',()=>{
   });
 process.on('SIGINT',()=>{
   console.log('INT, then emit TERM');
-  clearInterval(devicesInterval);
   clearInterval(stateInterval);
   //setTimeout(stateClientMOXA,1000,ClientEvents.LOST_CONNECTION);
   process.emit('SIGTERM');
   });
 process.on('uncaughtException', (err,origin)=>{
+  const fs = require('fs');
   fs.writeSync(
     process.stderr.fd,
     `Caught exception: ${err}\n` +
     `Exception origin: ${origin}`
   );
-  process.emit('SIGINT');
+  fs.writeSync(process.stdin.fd,'uncaughtException, exit');
+  clearInterval(stateInterval);
+  client.end();
+  client.destroy();
+  iot.closeconnectors();
+  process.exit();
   });
 
 function hex_to_ascii(str){

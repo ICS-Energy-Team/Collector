@@ -1,0 +1,11 @@
+10 August 2020
+  ICSpublish.js
+    - sendevent is async function now
+    - console only DeviceID and timestamp, without data when publish.
+  ICSMercuryMonitor.js
+    - const MAX_DEVICE_ID = 240; (it was wrong to 255)
+    - remove SLEEP state
+    - not responded device didn't removed from DeviceIDs
+    - SIGINT after socket error
+    - LOG asking mercury ID in LONGSEARCH substate
+    - fix uncaughtException handler
