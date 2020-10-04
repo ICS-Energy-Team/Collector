@@ -1,0 +1,34 @@
+{
+  "loraserver": {
+    "host": "193.232.196.28",
+    "port" : 8002,
+    "password": "1123"
+  },
+  "moxa": {
+    "host": "10.101.0.50",
+    "port": 4002, "datainterval" : 15000,
+    "name": "",
+    "timeout": 40,
+    "Mercury234" : {"active": true, "searchdelay": 20, "mintimeout": 40, "maxtimeout": 150 },
+    "Mercury206" : [{"active": false, "ID": 41744503}, {"active": true, "ID": 41744475}]
+    },
+  "meteo": [
+    {
+      "host": "193.232.196.28",
+      "hostdevice": "moxa",
+      "port": "4002",
+      "type": "meteo",
+      "model": "MPV-702",
+      "tbDevEui": "METEOSTATION01"
+    }
+  ],
+  "iotservers": [
+    {
+    "host": "193.232.208.41",
+    "port": "1883",
+    "protocol": "mqtt",
+    "maxSilenceTime": 60000,
+    "type": "thingsboard"
+    }
+  ]
+}
