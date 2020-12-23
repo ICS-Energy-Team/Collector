@@ -1,6 +1,6 @@
 'use strict';
 
-//const crc16 = require('crc').crc16modbus;
+const crc16 = require('crc').crc16modbus;
 
 /*
   Mercury234 simple payload decoder.
@@ -11,33 +11,35 @@
 // Now only for command 63h
 class Mercury234{
     constructor(common, mode = 'SEARCH'){
-        this._version = "MercuryMonitor v. 1.5 for Mercury 234";
-        this._versiondate = "16 Sept 2020";
+        this._version = "MercuryMonitor v. 1.7 for Mercury 234";
+        this._versiondate = "23 Dec 2020";
         // FAST - моментальные значения: ускоренное измерение
         // ACTIVEPWR - накопленные значения активной энергии по фазам
         // REACTPWR - накопленные значения реактивной энергии по квадрантам
         this.Common = common;
         this._commands = {'FAST': '0816A0', 'ACTIVEPWR': '056000', 'REACTPWR':'150000', 'ADMIN':'0102020202020202'};
         this._runningcmd = 'FAST';
-        this._searchdelay = common.M234.searchdelay;
-        this._cmdmintimeout = common.M234.mintimeout;
-        this._cmdmaxtimeout = common.M234.maxtimeout;
+        this._searchdelay = common.moxa.Mercury234.searchdelay;
+        this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
+        this._cmdmaxtimeout = common.moxa.Mercury234.maxtimeout;
         this.MIN_DEVICE_ID = 1;
-        this.MAX_DEVICE_ID = 240;
+        this.MAX_DEVICE_ID = 250;
 
         //'081411', '056000', '156000': U, Pcumul, Qcumul,
 
         this._requested_devices = [];
+        this._mode = mode;
         if ( mode == 'SEARCH' ) {
             this.request = this._search;
             this.parse = this._parseSearch;
             this._devices = [];
+            common.moxa.Mercury234.devices = [];
             this._i = this.MIN_DEVICE_ID;
             }
         else if ( mode == 'COLLECT' ) {
             this.request = this._request;
             this.parse = this._parseAnswer;
-            this._devices = common.devices;
+            this._devices = common.moxa.Mercury234.devices;
             this._i = -1;
             }
         else if ( mode == 'LONGSEARCH' ) {
@@ -53,7 +55,12 @@ class Mercury234{
         if( this._i > this.MAX_DEVICE_ID ){
             this._i = -1;
             this._devices = [...new Set(this._devices)]; // get only unique IDs
-            this.Common.devices.push(...this._devices);
+            this.Common.moxa.Mercury234.devices.push(...this._devices);
+            if( this._devices.length === 0 ) {
+                console.log( "I haven't found any devices. I have to halt collector due to config" );
+                return "EXIT";
+            }
+            console.log("Found "+this._devices.length+" devices: "+this._devices);
             return "DELETE"
             }
         this._i += 1;
@@ -91,17 +98,15 @@ class Mercury234{
             
         if( this._tick ) {
             if ( this._devices.length == 1 ) {
-                //sayLog(LOG, "Add Device ID=" + newDeviceIDs[0]);
-                if ( !this.Common.devices.includes(this._devices[0]) ){
-                    this.Common.devices.push(this._devices[0]);
+                if ( !this.Common.moxa.Mercury234.devices.includes(this._devices[0]) ){
+                    this.Common.moxa.Mercury234.devices.push(this._devices[0]);
                     }
                 }
-            else {
-                sayLog(LOG, "Found " + this._devices.length + " devices when substate is LONGSEARCH");
-                }
+            console.log("Mercury234parser. Found " + this._devices.length + " devices when in _longsearch");
+            this._devices = [];
             this._tick = false;
             return "END";
-        }
+            }
 
         this._i += 1;
         this._tick = true;
@@ -147,7 +152,7 @@ class Mercury234{
             return sayError(ERROR,'dID not in RequestedDevices');
             }
     
-        var devEui = 'MOXA' + opts.moxa.name.slice(-4) +
+        var devEui = 'MOXA' + this.Common.moxa.name.slice(-4) +
                     'MR234-' + ('000000'+dID.toString(10)).slice(-6);
         /* assert(msg.length == 20); */
     
@@ -155,11 +160,11 @@ class Mercury234{
         var cmd = this._runningcmd;
             {
             let curcommand = 'BAD';
-            if( buf.length == 15 ) { curcommand = 'ACTIVEPWR'; }
-            else if ( buf.length == 19 ) { curcommand = 'REACTPWR'; }
-            else if ( buf.length == 89 ) { curcommand = 'FAST'; }
+            if( buf.length === 15 ) { curcommand = 'ACTIVEPWR'; }
+            else if ( buf.length === 19 ) { curcommand = 'REACTPWR'; }
+            else if ( buf.length === 89 ) { curcommand = 'FAST'; }
             if ( curcommand == 'BAD' )
-                return sayError(BADSENSDATA);          
+                return sayError(BADSENSDATA,'buffer: '+buf.toString('hex'),{len:buf.length});
             if ( curcommand != cmd )
                 return sayError(DIFFCMD,"curcommand == "+curcommand+ " != runningcommand == " + cmd,
                         { datalen : buf.length, device : msg.devEui });
@@ -209,10 +214,10 @@ function sayError(i, str, obj) {
     var a = {error: myerrors[i], message: str};
     if( typeof obj !== "undefined" ) a.data = obj;
     return a;
-    }
+    }    
 
 function requestcmd(dID,cmd){
-    var outHex = Buffer.from(dID).toString('hex') + cmd;
+    var outHex = Buffer.from([dID]).toString('hex') + cmd;
     var crcHex = ('0000'+crc16(Buffer.from(outHex,'hex')).toString(16)).slice(-4); // crc for this command
     var outgoingMessage = Buffer.from( outHex+crcHex.substr(2,2)+crcHex.substr(0,2),'hex' );
     return outgoingMessage;

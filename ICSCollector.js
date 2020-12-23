@@ -1,17 +1,19 @@
-//'use strict';
+'use strict';
 
 /*
-  Mercury 234 simple payload decoder.
+  Collector.
   Use it as it is or remove the bugs :)
   vkorepanov@ipu.ru
 */
 
-const CollectorName = "Monitor v. 1.3";
+const CollectorName = "Collector v. 0.9";
+const CollectorVersionDate = "23 Dec 2020";
 console.log("Hello! Starting " + CollectorName + " at " + Date());
 
 const net = require('net');
 var iot = require('./ICSpublish.js');
 
+require('json5/lib/register');
 var opts;// = require('./'+process.argv[2]);
 function readOptions () {
     opts = require('./'+process.argv[2]);
@@ -20,12 +22,12 @@ function readOptions () {
 readOptions();
 
 var mechanisms = [];
-var curmechanism;
-var imech;
-var Common = {}; // common vars for mechanisms
-if( opts.moxa.Mercury234.active ){
+var curmechanism = null;
+var imech = 0;
+var Common = {moxa: opts.moxa}; // common vars for mechanisms
+
+if( opts.moxa.Mercury234 && opts.moxa.Mercury234.active ){
     const Merc234 = require('./Mercury234parser');
-    Common.M234 = opts.moxa.Mercury234;
     mechanisms.push( new Merc234(Common,'SEARCH') );
     mechanisms.push( new Merc234(Common,'COLLECT') );
     mechanisms.push( new Merc234(Common,'LONGSEARCH') );
@@ -33,7 +35,7 @@ if( opts.moxa.Mercury234.active ){
 
 if ( opts.moxa.Mercury206 ) {
     const Merc206 = require('./Mercury206parser');
-    mechanisms.push( new Merc206() );
+    mechanisms.push( new Merc206(opts.moxa) );
     }
 
 // MOXA
@@ -95,15 +97,26 @@ async function stateClientMOXA(newevent) {
                 dataInterval = setInterval(stateClientMOXA, opts.moxa.datainterval, ClientEvents.DEVICES_START_REQUEST);
                 }
             }
+        if ( curmechanism === null ) return;
         var request = curmechanism.request();
         switch(request){
+          case "EXIT":
+            curmechanism = null;
+            console.log( "Collector: Some mechanism send EXIT, I quit." );
+            process.emit('SIGTERM');
+            break;
           case "DELETE":
             mechanisms.splice(imech,1); imech -= 1;
+            curmechanism = null; 
+            // go to "END" case - choose mechanism
           case "END":
             imech += 1;
-            if( imech >= mechanisms.length )
-                return stateClientMOXA(ClientEvents.READY);
+            if( imech >= mechanisms.length ){
+                curmechanism = null;
+                return;
+                }
             curmechanism = mechanisms[imech];
+            return stateClientMOXA(); // go to request of the next mechanism
             break;
           default:
             stateInterval = setInterval(stateClientMOXA,request.timeout);
@@ -117,6 +130,7 @@ async function stateClientMOXA(newevent) {
 }// stateClientMOXA
 
 function connect(){
+    if ( client.connecting ) client.destroy();
     client.connect(opts.moxa.port, opts.moxa.host, function() {
         console.log('CONNECTED TO: '+ opts.moxa.host + ':' + opts.moxa.port);
         stateClientMOXA(ClientEvents.CONNECT_SUCCESS);//IsConnected = true;
@@ -134,7 +148,7 @@ client.on('data', function(buf) { // not asynchronous!!
     var data = curmechanism.parse(buf);
 
     if ( data === null ) {
-        sayError(BADSENSDATA);
+        sayError({error:'Bad sensor data'});
         return;
         }
     if ( data.error ) {
@@ -164,15 +178,18 @@ client.on('end', function(){
     })
 client.on('error', function(err) {
     console.log(err)
-    sayError(ERROR,'Socket client',err);
+    sayError({error:'Error in socket client',data:err});
     process.emit('SIGINT');
     });
 process.on('SIGTERM',()=>{
-    console.log('TERM');
-    client.end();
-    client.destroy();
-    iot.closeconnectors();
-    process.exit();
+    try {
+        console.log('TERM');
+        client.destroy();
+        iot.closeconnectors();
+        }
+    finally {
+        process.exit();
+        }
     });
 process.on('SIGINT',()=>{
     console.log('INT, then emit TERM');
@@ -181,24 +198,27 @@ process.on('SIGINT',()=>{
     process.emit('SIGTERM');
     });
 process.on('uncaughtException', (err,origin)=>{
-    const fs = require('fs');
-    fs.writeSync(
-      process.stderr.fd,
-      `Caught exception: ${err}\n` +
-      `Exception origin: ${origin}`
-    );
-    fs.writeSync(process.stdin.fd,'uncaughtException, exit');
-    clearInterval(stateInterval);
-    client.end();
-    client.destroy();
-    iot.closeconnectors();
-    process.exit();
+    try {
+        const fs = require('fs');
+        fs.writeSync(
+        process.stderr.fd,
+        `Caught exception: ${err}\n` +
+        `Exception origin: ${origin}`
+        );
+        fs.writeSync(process.stdout.fd,'uncaughtException, exit');
+        clearInterval(stateInterval);
+        client.destroy();
+        iot.closeconnectors();
+        }
+    finally{
+        process.exit();
+        }
     });
 
 function sayError(errdata) {
     if( errdata === undefined ) return;
     console.log('ERROR: ' + errdata.error + ' . ' + errdata.message);
-    if( errdata.data ) console.log('Data: ' + errdata.data);
+    if( errdata.data ) console.log('Data: ' + JSON.stringify(errdata.data, null, 2) );
     //if( typeof obj !== "undefined" ) console.log(obj);
     }
 
