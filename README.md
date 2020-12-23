@@ -1,8 +1,10 @@
 # Collector
 Scripts for collecting data and transfer it to IoTs platforms
 
-We have NodeJS scripts for devices:
-* Mercury 234 - ICSMercuryMonitor.js
-* Mercury 206 (soon)
+ICSCollector.js - collector controller for these devices (mechanisms):
+* Mercury 234 - Mercury234parser.js
+* Mercury 206 - Mercury206parser.js
+
+Scripts for these devices:
 * Lora - ICSLoraMonitor.js
 * MeteoStation МПВ-702.1643 (merapribor.ru in Russian) -ICSMercuryMonitor.js
