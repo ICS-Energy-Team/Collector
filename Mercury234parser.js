@@ -12,12 +12,14 @@ const crc16 = require('crc').crc16modbus;
 class Mercury234{
     constructor(common, mode = 'SEARCH'){
         this._version = "MercuryMonitor v. 1.7 for Mercury 234";
-        this._versiondate = "23 Dec 2020";
+        this._versiondate = "15 Jan 2020";
         // FAST - моментальные значения: ускоренное измерение
         // ACTIVEPWR - накопленные значения активной энергии по фазам
         // REACTPWR - накопленные значения реактивной энергии по квадрантам
         this.Common = common;
-        this._commands = {'FAST': '0816A0', 'ACTIVEPWR': '056000', 'REACTPWR':'150000', 'ADMIN':'0102020202020202'};
+        this._commands = {'FAST': '0816A0', 'ACTIVEPWR': '056000', 'REACTPWR':'150000', 'ADMIN':'0102020202020202',
+                        'CURMONTH':'05'
+                        };
         this._runningcmd = 'FAST';
         this._searchdelay = common.moxa.Mercury234.searchdelay;
         this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
@@ -33,8 +35,9 @@ class Mercury234{
             this.request = this._search;
             this.parse = this._parseSearch;
             this._devices = [];
-            common.moxa.Mercury234.devices = [];
-            this._i = this.MIN_DEVICE_ID;
+            if (typeof common.moxa.Mercury234.devices === 'undefined')
+                common.moxa.Mercury234.devices = [];
+            this._i = this.MIN_DEVICE_ID - 1;
             }
         else if ( mode == 'COLLECT' ) {
             this.request = this._request;
@@ -46,24 +49,34 @@ class Mercury234{
             this.request = this._longsearch;
             this.parse = this._parseSearch;
             this._devices = [];
-            this._i = this.MIN_DEVICE_ID;
+            this._i = this.MIN_DEVICE_ID - 1;
             this._tick = false;
+            }
+        else if ( mode == 'ACTIVEPOWER' ) {
+            this._runningcmd = 'ACTIVEPWR';
+            this.request = this._activePowerRequest;
+            this.parse = this._parseAnswer;
+            this._devices = common.moxa.Mercury234.devices;
+            this._i = -1;
+            this._ap_tick = false;
+            this._ap_turnOn = true;
+            common.plan.push({ func : this._activePowerOn.bind(this), schedule : common.moxa.Mercury234.activepowerschedule });
             }
         }
 
     _search(){
+        this._i += 1;
         if( this._i > this.MAX_DEVICE_ID ){
-            this._i = -1;
+            this._i = this.MIN_DEVICE_ID - 1;
             this._devices = [...new Set(this._devices)]; // get only unique IDs
-            this.Common.moxa.Mercury234.devices.push(...this._devices);
             if( this._devices.length === 0 ) {
                 console.log( "I haven't found any devices. I have to halt collector due to config" );
                 return "EXIT";
             }
+            this.Common.moxa.Mercury234.devices.push(...this._devices);
             console.log("Found "+this._devices.length+" devices: "+this._devices);
             return "DELETE"
             }
-        this._i += 1;
         return {request: requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
         }
 
@@ -87,32 +100,58 @@ class Mercury234{
         }
 
     _longsearch(){
-        if( this._i > this.MAX_DEVICE_ID )
-            this._i = this.MIN_DEVICE_ID;
-
-          /* this._i = -1;
-            let A = new Set(this._devices), B = new Set(Common.devices);
-            let AdiffB = A.filter(function(x) { return B.indexOf(x) < 0 });
-            this.Common.devices = this._devices;
-            return "DELETE"*/
-            
         if( this._tick ) {
-            if ( this._devices.length == 1 ) {
-                if ( !this.Common.moxa.Mercury234.devices.includes(this._devices[0]) ){
-                    this.Common.moxa.Mercury234.devices.push(this._devices[0]);
-                    }
-                }
-            console.log("Mercury234parser. Found " + this._devices.length + " devices when in _longsearch");
-            this._devices = [];
-            this._tick = false;
+            this._endlongsearch();
             return "END";
             }
 
         this._i += 1;
+        if( this._i > this.MAX_DEVICE_ID )
+            this._i = this.MIN_DEVICE_ID;
+
+
         this._tick = true;
         return {request: requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
         }
-    
+    async _endlongsearch(){
+        if ( this._devices.length == 1 ) {
+            if ( !this.Common.moxa.Mercury234.devices.includes(this._devices[0]) ){
+                this.Common.moxa.Mercury234.devices.push(this._devices[0]);
+                }
+            }
+        console.log("Mercury234parser. Found " + this._devices.length + " devices when in _longsearch");
+        this._devices = [];
+        this._tick = false;
+        }
+
+    _activePowerOn(){
+        if (this._mode != 'ACTIVEPOWER') return;
+        console.log("Active Power On on "  + Date());
+        this._ap_turnOn = true;
+        this._ap_tick = false
+        this._i = -1;
+        }
+
+    _activePowerRequest(){
+        if( ! this._ap_turnOn ) return "END";
+        if( this._ap_tick ) { // for only single run of this mechanism in one moxa.datainterval
+            this._ap_tick = false;
+            return "END";
+            }
+
+        this._i += 1;
+
+        if( this._i >= this._devices.length ) {
+            this._ap_turnOn = false;
+            return "END";
+            }
+
+        this._ap_tick = true;
+        let d = this._devices[this._i];
+        this._requested_devices.push(d);
+        return {request: requestcmd(d,this._commands['ACTIVEPWR']), timeout: this._cmdmaxtimeout };
+        }
+
     _parseSearch(buf){
         if( buf.length < 2 )
             return sayError(RESPLESS2);
@@ -152,8 +191,8 @@ class Mercury234{
             return sayError(ERROR,'dID not in RequestedDevices');
             }
     
-        var devEui = 'MOXA' + this.Common.moxa.name.slice(-4) +
-                    'MR234-' + ('000000'+dID.toString(10)).slice(-6);
+        var devEui = this.Common.moxa.name.slice(-10) +
+                    '-MR234-' + ('000'+dID.toString(10)).slice(-3);
         /* assert(msg.length == 20); */
     
         //console.log('Parsing command '+ runningcommand +'...');
@@ -162,12 +201,12 @@ class Mercury234{
             let curcommand = 'BAD';
             if( buf.length === 15 ) { curcommand = 'ACTIVEPWR'; }
             else if ( buf.length === 19 ) { curcommand = 'REACTPWR'; }
-            else if ( buf.length === 89 ) { curcommand = 'FAST'; }
+            else if ( buf.length === 89 || buf.length === 98 ) { curcommand = 'FAST'; }
             if ( curcommand == 'BAD' )
                 return sayError(BADSENSDATA,'buffer: '+buf.toString('hex'),{len:buf.length});
             if ( curcommand != cmd )
                 return sayError(DIFFCMD,"curcommand == "+curcommand+ " != runningcommand == " + cmd,
-                        { datalen : buf.length, device : msg.devEui });
+                        { datalen : buf.length, device : devEui });
             }
     
         var sensordata = null;
@@ -187,7 +226,7 @@ class Mercury234{
                             };
                 break;
             case 'ACTIVEPWR': // накопленные значения активной энергии по фазам
-                sensordata = { Aplus1: read4byteUInt(buf, 1), Aplus2: read4byteUInt(buf, 5), Aplus3: read4byteUInt(buf, 9) };
+                sensordata = { A1: read4byteUInt(buf, 1), A2: read4byteUInt(buf, 5), A3: read4byteUInt(buf, 9) };
                 break;
             case 'REACTPWR': // накопленные значения реактивной энергии по квадрантам
                 sensordata = { R1: read4byteUInt(buf, 1), R2: read4byteUInt(buf, 5), R3: read4byteUInt(buf, 9), R4: read4byteUInt(buf, 13) };

@@ -1,0 +1,63 @@
+{
+  "loraserver": {
+    "host": "193.232.196.28",
+    "port" : 8002,
+    "password": "1123"
+  },
+  "moxa": {
+    "host": "10.101.0.50",
+    "port": 4002, "datainterval" : 15, // sec
+    "name": "",
+    "connecttimeout": 59, // sec
+    "timeout": 40,
+    "Mercury234" : { "active": true, "searchdelay": 50, "mintimeout": 40, "maxtimeout": 150, "activepowerschedule" : {"minute":0} },
+    "Mercury206" : { "timeout":150, "devices":[{"active": false, "ID": 41744503}, {"active": true, "ID": 41744475}]},
+    },
+  "meteo": [
+    {
+      "host": "10.101.0.70",
+      "hostdevice": "moxa",
+      "port": "4002",
+      "type": "meteo",
+      "model": "MPV-702",
+      "tbDevEui": "METEOSTATION01"
+    },
+    {
+      "host": "193.232.196.28",
+      "hostdevice": "moxa",
+      "port": "4002",
+      "type": "meteo",
+      "model": "SOKOL-M1",
+      "netaddress": 1, // SOKOL's api-specific
+	    "baudRate": 19200,
+      "datainterval": 10,
+      "tbDevEui": "METEOSTATION02"
+    }
+  ],
+  "wirenboard": {
+      "host": "192.168.6.8",
+      "topics": {"/devices/wb-adc/controls/EXT1_A1":{"devEUI":"SCH29-WB:6.8-Ext1_a1","name":"ext1_a1"} , "/devices/wb-adc/controls/EXT1_A2":{"devEUI":"SCH29-WB:6.8-Ext1_a2","name":"ext1_a2"} }
+      },
+  "iotservers": [
+    {
+      "type": "file",
+      "interval": "1d", // rotate daily
+      "maxFiles": 15, // rotate 2+ weeks
+      "compress": "gzip" // compress rotated files
+    },
+    {
+      "host": "193.232.208.41",
+      "port": "1883",
+      "protocol": "mqtt",
+      "maxSilenceTime": 60000,
+      "type": "thingsboard"
+    },
+    {
+      "host": "193.232.208.41",
+      "port": "80",
+      "protocol": "http",
+      "maxSilenceTime": 60000,
+      "type": "thingsboard"
+    }
+  ]
+}

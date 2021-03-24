@@ -15,8 +15,7 @@
 */
 
 const CollectorName = "LoraMonitor v. 1.00";
-const moment = require('moment');
-console.log("Hello! Starting " + CollectorName + " at " + moment().format("DD MMM YYYY, HH:mm:ss"));
+console.log("Hello! Starting " + CollectorName + " at " + Date());
 
 const TYPE_TEMP = 0x01; //temp 2 bytes -3276.8°C -->3276.7°C
 const TYPE_RH = 0x02; //Humidity 1 byte  0-100%
@@ -45,8 +44,13 @@ const TYPE_ANALOG2 = 0x18; //2bytes voltage in mV
 const TYPE_EXT_TEMP2 = 0x19; //2bytes -3276.5C-->3276.5C
 
 const WebSocket = require('websocket').w3cwebsocket;
-var opts = require('./'+process.argv[2]);
-var iot = require('./ICSpublish.js');
+const Publisher = require('./ICSpublish.js');
+
+// read options
+const readConfig = require('./config.js').readConfig;
+var opts = readConfig(process.argv[2]);
+
+var iot = new Publisher(opts);
 
 function isElsys(devEui) {
     if (devEui[0] == "A") {
@@ -208,7 +212,7 @@ function DecodeElsysPayload(data) {
                 break
         }
     }
-    var ret = {ts: moment().valueOf(), values: obj};
+    var ret = {ts: +new Date(), values: obj};
     return ret;
 }
 
@@ -261,7 +265,7 @@ function DecodeVegaPayload(data) {
     obj.halldev1 = (data[6] >> 2) & 0x01;
     obj.halldev2 = (data[6] >> 3) & 0x01;
 
-    var ret = {ts: moment().valueOf(), values: obj};
+    var ret = {ts: +new Date(), values: obj};
     return ret;
 };
 

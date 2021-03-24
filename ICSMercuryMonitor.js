@@ -6,7 +6,7 @@
   vkorepanov@ipu.ru
 */
 
-const CollectorName = "MercuryMonitor v. 1.3";
+const CollectorName = "MercuryMonitor v. 1.4";
 const moment = require('moment');
 console.log("Hello! Starting " + CollectorName + " at " + moment().format("DD MMM YYYY, HH:mm:ss"));
 
@@ -21,31 +21,11 @@ function readOptions () {
   // need static options check
 }
 readOptions();
-
-const ERROR = 0, RESPLESS2 = 1, CRCFAIL = 2, DIFFCMD = 3, RESPBAD = 4, BADSENSDATA = 5
-var myerrors = {};
-myerrors[ERROR] = 'descr';
-myerrors[RESPLESS2] = 'RECEIVED response of length < 2';
-myerrors[CRCFAIL] = 'CRC FAIL';
-myerrors[DIFFCMD] = 'Different commands';
-myerrors[RESPBAD] = 'RECEIVED BAD response';
-myerrors[BADSENSDATA] = 'Bad encoded sensor data';
-function sayError(i, str, obj) {
-  if( i < 0 || i >= myerrors.length ) return;
-  if( typeof str === "undefined" ) str = '';
-  console.log('ERROR '+ i + ': ' + myerrors[i] + ' . ' + str);
-  if( typeof obj !== "undefined" ) console.log(obj);
-}
-
-const LOG = 0;
-var mylogs = {};
-mylogs[LOG] = 'descr';
-function sayLog(i,str,obj) {
-  if( i < 0 || i >= mylogs.length ) return;
-  if( typeof str === "undefined" ) str = '';
-  console.log('LOG '+ i + ': ' + mylogs[i] + ' . ' + str);
-  if( typeof obj !== "undefined" ) console.log(obj);
-}
+if ( opts.moxa.Mercury206 ) {
+  const Merc206 = require('./Mercury206parser');
+  var merc206 = new Merc206(opts.moxa.Mercury206);
+  merc206.prepare();
+  }
 
 // MOXA
 
@@ -62,7 +42,7 @@ const ClientStates = {
     DEVICES_SEARCH: 2,
     DEVICES_REQUEST: 3
 };
-const ClientSubStates = { BASE: 0, LONGSEARCH: 1 };
+const ClientSubStates = { BASE: 0, LONGSEARCH: 1, MERC206: 2 };
 const ClientEvents = {
     TRY_TO_RUN: 1000,
     CONNECT_SUCCESS: 1001,
@@ -116,7 +96,7 @@ async function stateClientMOXA(newevent) {
               DeviceIDs = []; newDeviceIDs = [];
               searchdevicecounter = MIN_DEVICE_ID;
               clearInterval(stateInterval);
-              stateInterval = setInterval(stateClientMOXA,opts.moxa.delay1);
+              stateInterval = setInterval(stateClientMOXA,opts.moxa.Mercury234.searchdelay);
               }
           ask(searchdevicecounter);
           searchdevicecounter++;
@@ -133,8 +113,8 @@ async function stateClientMOXA(newevent) {
               if( stateChanged ) {
                   stateChanged = false;
                   longsearchdevcnt = MIN_DEVICE_ID;
-                  // запрос данных каждые opts.moxa.delay2 мс
-                  dataInterval = setInterval(stateClientMOXA, opts.moxa.delay2, ClientEvents.DEVICES_START_REQUEST);
+                  // запрос данных каждые opts.moxa.datainterval мс
+                  dataInterval = setInterval(stateClientMOXA, opts.moxa.datainterval, ClientEvents.DEVICES_START_REQUEST);
                   }
               if( RequestedDevices.length == DeviceIDs.length ){
                   sayError(ERROR,"All devices doesn't respond, close connection, end");
@@ -157,7 +137,7 @@ async function stateClientMOXA(newevent) {
                 sayLog(0,"ASK "+longsearchdevcnt);
                 ask(longsearchdevcnt);
                 longsearchdevcnt++;
-                stateInterval = setInterval(stateClientMOXA,opts.moxa.delay1);
+                stateInterval = setInterval(stateClientMOXA,opts.moxa.Mercury234.searchdelay);
                 return;
                 }
               requestdata(runningdevice,runningcommand);
@@ -181,6 +161,24 @@ async function stateClientMOXA(newevent) {
               else {
                 sayLog(LOG, "Found " + newDeviceIDs.length + " devices when substate is LONGSEARCH");
                 }
+
+              if( merc206 ){
+                  subState = ClientSubStates.MERC206;
+                  //console.log('enter MERC206: ' + message.toString('hex'));
+                  stateInterval = setInterval(stateClientMOXA,10);// timeout
+                  }
+              }
+          else if( subState == ClientSubStates.MERC206 ){
+              console.log('in MERC206');
+              if( merc206 ){
+                var message = merc206.request();
+                if( message != "END" ){
+                  console.log('  send to merc206');
+                  client.write(message);
+                  stateInterval = setInterval(stateClientMOXA,160);
+                  }
+                }
+
               }
           break;
     default :
@@ -234,14 +232,22 @@ client.on('data', function(data) { // not asynchronous!!
         return;
         }
 
+    if ( clientState == ClientStates.DEVICES_REQUEST && subState == ClientSubStates.MERC206 ){
+        var res = merc206.parseanswer(data);
+        var msg = {devEui: 'MOXA' + opts.moxa.SN + 'MERC' + res.dID };
+        var datatosend = {ts: moment().valueOf(), devEui: msg.devEui, values: res.result};
+        iot.sendevent(opts.iotservers, msg.devEui, datatosend);
+        return;
+        }
+
     var dID = data.readUInt8(0);
 
     // check CRC
     if ( data.readUInt16LE(data.length-2) != crc16(data.slice(0, data.length-2)) ) {
 //        let er = 'id='+dID+' got '+data.readUInt16LE(data.length-2).toString(16)
 //                   +' but calc ' + crc16(data.slice(0, data.length-2)).toString(16);
-        let er = 'id=' + dID + ' start=' + startmoment + ' end=' + endmoment + ' reqdevice='+runningdevice;
-        sayError(CRCFAIL, er, {datalen : data.length});
+        let er = 'state=' + clientState + '_' + subState + ', id=' + dID + ' reqdevice='+runningdevice;
+        sayError(CRCFAIL, er, {datalen : data.length, data: data.toString('hex')});
         return;
         }
 
@@ -382,4 +388,29 @@ function readPowerValue(data, offset, powertype) {
   //      if ((data.readUInt8(offset)&0x80)!=0 && powertype=='P') { p *= -1; }
   if ((data.readUInt8(offset)&0x40)==0 && powertype=='Q') { p *= -1; }
   return p;
+  }
+
+const ERROR = 0, RESPLESS2 = 1, CRCFAIL = 2, DIFFCMD = 3, RESPBAD = 4, BADSENSDATA = 5;
+var myerrors = {};
+myerrors[ERROR] = 'descr';
+myerrors[RESPLESS2] = 'RECEIVED response of length < 2';
+myerrors[CRCFAIL] = 'CRC FAIL';
+myerrors[DIFFCMD] = 'Different commands';
+myerrors[RESPBAD] = 'RECEIVED BAD response';
+myerrors[BADSENSDATA] = 'Bad encoded sensor data';
+function sayError(i, str, obj) {
+  if( i < 0 || i >= myerrors.length ) return;
+  if( typeof str === "undefined" ) str = '';
+  console.log('ERROR '+ i + ': ' + myerrors[i] + ' . ' + str);
+  if( typeof obj !== "undefined" ) console.log(obj);
+  }
+
+const LOG = 0;
+var mylogs = {};
+mylogs[LOG] = 'descr';
+function sayLog(i,str,obj) {
+  if( i < 0 || i >= mylogs.length ) return;
+  if( typeof str === "undefined" ) str = '';
+  console.log('LOG '+ i + ': ' + mylogs[i] + ' . ' + str);
+  if( typeof obj !== "undefined" ) console.log(obj);
   }

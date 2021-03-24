@@ -7,30 +7,35 @@
 */
 
 const CollectorName = "Collector v. 0.9";
-const CollectorVersionDate = "23 Dec 2020";
+const CollectorVersionDate = "15 Jan 2021";
 console.log("Hello! Starting " + CollectorName + " at " + Date());
+if( process.argv.length < 3 ) {
+    console.log('Please specify JSON config name as first argument of script');
+    process.exit(1);
+}
 
 const net = require('net');
-var iot = require('./ICSpublish.js');
+const schedule = require('node-schedule');
+const Publisher = require('./ICSpublish.js');
 
-require('json5/lib/register');
-var opts;// = require('./'+process.argv[2]);
-function readOptions () {
-    opts = require('./'+process.argv[2]);
-    // need static options check
-    }
-readOptions();
+
+// read options
+const readConfig = require('./config.js').readConfig;
+var opts = readConfig(process.argv[2]);
+
+var iot = new Publisher(opts);
 
 var mechanisms = [];
 var curmechanism = null;
 var imech = 0;
-var Common = {moxa: opts.moxa}; // common vars for mechanisms
+var Common = {moxa: opts.moxa, plan:[]}; // common vars for mechanisms
 
 if( opts.moxa.Mercury234 && opts.moxa.Mercury234.active ){
     const Merc234 = require('./Mercury234parser');
     mechanisms.push( new Merc234(Common,'SEARCH') );
     mechanisms.push( new Merc234(Common,'COLLECT') );
     mechanisms.push( new Merc234(Common,'LONGSEARCH') );
+    if ( opts.moxa.Mercury234.activepowerschedule ) mechanisms.push( new Merc234(Common,'ACTIVEPOWER') );
     }
 
 if ( opts.moxa.Mercury206 ) {
@@ -38,9 +43,14 @@ if ( opts.moxa.Mercury206 ) {
     mechanisms.push( new Merc206(opts.moxa) );
     }
 
-// MOXA
 
+Common.plan.forEach(function(p){
+    schedule.scheduleJob(p.schedule, p.func);
+    });
+
+// RS485-Ethernet converter (MOXA, Teleofis, ...)
 var client = new net.Socket();
+
 var startmoment, endmoment;
 
 const ClientStates = {
@@ -52,7 +62,7 @@ function setState(newstate) {
     stateChanged = clientState != newstate;
     clientState = newstate;
     }
-var clientState = ClientStates.SLEEP, stateChanged = false;
+var clientState = ClientStates.SLEEP, stateChanged = false, isMechanismWork = false;
 
 const ClientEvents = {
     CONNECT_SUCCESS: 1001,
@@ -60,41 +70,45 @@ const ClientEvents = {
     READY: 1003,
     DEVICES_START_REQUEST: 1004
 };
-var stateInterval, dataInterval;
+var stateJob, dataJob, timer;
 
 setState(ClientStates.NOT_CONNECTED);
 // Let's go!
-stateClientMOXA();
+stateJob = schedule.scheduleJob('*/2 * * * * *', stateClientMOXA);
 
 async function stateClientMOXA(newevent) {
     switch (clientState) {
     case ClientStates.NOT_CONNECTED :
         if( newevent == ClientEvents.CONNECT_SUCCESS ) {
-            clearInterval(stateInterval);
+            stateJob.cancel();
             setState(ClientStates.DATA_COLLECTION);
             return stateClientMOXA();//stateInterval = setInterval(stateClientMOXA,10);
         }
         if( stateChanged ){
             stateChanged = false;
-            clearInterval(stateInterval);
-            stateInterval = setInterval(stateClientMOXA,5000/*each 5sec try to connect*/);
+            stateJob.cancel();
+            stateJob = schedule.scheduleJob(`*/${Common.moxa.connecttimeout} * * * * *`, stateClientMOXA); /*each connecttimeout msec try to connect*/
             }
         connect();
         break;
     case ClientStates.DATA_COLLECTION :
-        clearInterval(stateInterval);
-        if( newevent == ClientEvents.LOST_CONNECTION ){
-            clearInterval(dataInterval);
+        stateJob.cancel();
+        if( newevent == ClientEvents.LOST_CONNECTION )
+            {
+            dataJob.cancel();
             setState(ClientStates.NOT_CONNECTED);
             return stateClientMOXA();
             }
-        if( newevent == ClientEvents.DEVICES_START_REQUEST || stateChanged ) {
+        if( (newevent == ClientEvents.DEVICES_START_REQUEST) || stateChanged ) 
+            {
+            if( isMechanismWork ) return;
+            isMechanismWork = true;
             imech = 0;
             curmechanism = mechanisms[imech];
             // запрос данных каждые opts.moxa.datainterval мс
             if( stateChanged ) {
                 stateChanged = false;
-                dataInterval = setInterval(stateClientMOXA, opts.moxa.datainterval, ClientEvents.DEVICES_START_REQUEST);
+                dataJob = schedule.scheduleJob( `*/${Common.moxa.datainterval} * * * * *`, stateClientMOXA.bind(null, ClientEvents.DEVICES_START_REQUEST) );
                 }
             }
         if ( curmechanism === null ) return;
@@ -112,6 +126,7 @@ async function stateClientMOXA(newevent) {
           case "END":
             imech += 1;
             if( imech >= mechanisms.length ){
+                isMechanismWork = false;
                 curmechanism = null;
                 return;
                 }
@@ -119,7 +134,7 @@ async function stateClientMOXA(newevent) {
             return stateClientMOXA(); // go to request of the next mechanism
             break;
           default:
-            stateInterval = setInterval(stateClientMOXA,request.timeout);
+            timer = setTimeout(stateClientMOXA,request.timeout);
             startmoment = +new Date();
             client.write(request.request);
             break;
@@ -144,6 +159,10 @@ client.on('data', function(buf) { // not asynchronous!!
     var time = endmoment - startmoment;
     //console.log("TEST"+Buffer.byteLength(data)+" = "+data.length);
     //console.log('RECEIVED COMMAND '+runningcommand+': ' + data.slice(0, data.length-2).toString('hex'), ', searchdevicecounter = '+searchdevicecounter);
+    if ( curmechanism === null ){
+        console.log( 'curmechanism is null, buf:' + buf.toString('hex') );
+        return;
+        }
 
     var data = curmechanism.parse(buf);
 
@@ -156,8 +175,8 @@ client.on('data', function(buf) { // not asynchronous!!
         return;
         }
     if ( Number.isInteger(data.timeout) ){
-        clearInterval(stateInterval);
-        setTimeout(stateClientMOXA,Math.max(0,data.timeout - time));
+        clearTimeout(timer);
+        timer = setTimeout(stateClientMOXA,Math.max(0,data.timeout - time));
         }
     if ( data.devEui ) {
         var datatosend = {ts: endmoment, devEui: data.devEui, values: data.values};
@@ -168,13 +187,15 @@ client.on('data', function(buf) { // not asynchronous!!
 // Add a 'close' event handler for the client socket
 client.on('close', function() {
     console.log('Connection closed');
-    clearInterval(stateInterval);
-    setTimeout(stateClientMOXA,100,ClientEvents.LOST_CONNECTION);
+    stateJob.cancel();
+    clearTimeout(timer);
+    timer = setTimeout(stateClientMOXA,100,ClientEvents.LOST_CONNECTION);
     });
 client.on('end', function(){
     console.log('Other side send FIN packet');
-    clearInterval(stateInterval);
-    setTimeout(stateClientMOXA,100,ClientEvents.LOST_CONNECTION);
+    stateJob.cancel();
+    clearTimeout(timer);
+    timer = setTimeout(stateClientMOXA,100,ClientEvents.LOST_CONNECTION);
     })
 client.on('error', function(err) {
     console.log(err)
@@ -193,7 +214,7 @@ process.on('SIGTERM',()=>{
     });
 process.on('SIGINT',()=>{
     console.log('INT, then emit TERM');
-    clearInterval(stateInterval);
+    stateJob.cancel();
     //setTimeout(stateClientMOXA,1000,ClientEvents.LOST_CONNECTION);
     process.emit('SIGTERM');
     });
@@ -203,10 +224,10 @@ process.on('uncaughtException', (err,origin)=>{
         fs.writeSync(
         process.stderr.fd,
         `Caught exception: ${err}\n` +
-        `Exception origin: ${origin}`
+        `Exception origin: ${origin}\n`
         );
         fs.writeSync(process.stdout.fd,'uncaughtException, exit');
-        clearInterval(stateInterval);
+        stateJob.cancel();
         client.destroy();
         iot.closeconnectors();
         }

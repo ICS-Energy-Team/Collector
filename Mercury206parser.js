@@ -50,9 +50,10 @@ class Mercury206{
         }
     _parseAnswer(buf){
         var dID = buf.readUInt32BE(0);
+        if( buf.length < 5 ) return sayError(RESPLESS5,'Mercury206parser',buf);
         var cmd = buf.readUInt8(4);
         return {
-            devEui: 'MOXA' + this._moxa.name + 'MERC' + dID, 
+            devEui: (this._moxa.name + '-206-' + dID).slice(-20), 
             values: this._parsers[cmd](buf), 
             timeout: this._moxa.Mercury206.timeout
             };
@@ -85,6 +86,18 @@ class Mercury206{
         return {"V": V, "I": I, "P": P};
         }
 }
+
+const RESPLESS5 = 0;
+var myerrors = {};
+myerrors[RESPLESS5] = 'RECEIVED response of length < 5';
+
+function sayError(i, str, obj) {
+    if( i < 0 || i >= myerrors.length ) return;
+    if( typeof str === "undefined" ) str = '';
+    var a = {error: myerrors[i], message: str};
+    if( typeof obj !== "undefined" ) a.data = obj;
+    return a;
+    }    
 
 module.exports = Mercury206;
 
