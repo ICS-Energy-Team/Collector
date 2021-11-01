@@ -1,4 +1,7 @@
 {
+  "device":{
+    "name": "meteo"
+  }
   "loraserver": {
     "host": "193.232.196.28",
     "port" : 8002,
@@ -9,8 +12,8 @@
     "port": 4002, "datainterval" : 15, // sec
     "name": "",
     "connecttimeout": 59, // sec
-    "timeout": 40,
-    "Mercury234" : { "active": true, "searchdelay": 50, "mintimeout": 40, "maxtimeout": 150, "activepowerschedule" : {"minute":0} },
+    "datacheckinterval": 30, // sec
+    "Mercury234" : { "active": true, "searchdelay": 50, "mintimeout": 40, "maxtimeout": 150, "dayenergyschedule" : {"minute":0}, "monthenergyschedule" : {"hour":0,"minute":30,"date": 1} },
     "Mercury206" : { "timeout":150, "devices":[{"active": false, "ID": 41744503}, {"active": true, "ID": 41744475}]},
     },
   "meteo": [
@@ -20,17 +23,20 @@
       "port": "4002",
       "type": "meteo",
       "model": "MPV-702",
-      "tbDevEui": "METEOSTATION01"
+      "tbDevEui": "METEOSTATION01",
+      "datainterval": 1,
+      "datacheckinterval": 30
     },
     {
-      "host": "193.232.196.28",
+      "host": "10.101.0.70",
       "hostdevice": "moxa",
-      "port": "4002",
+      "port": "60003",
       "type": "meteo",
       "model": "SOKOL-M1",
       "netaddress": 1, // SOKOL's api-specific
 	    "baudRate": 19200,
       "datainterval": 10,
+      "datacheckinterval": 50,
       "tbDevEui": "METEOSTATION02"
     }
   ],

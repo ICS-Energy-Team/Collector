@@ -298,6 +298,7 @@ socket.onmessage = function(event) {
             var sensordata = DecodeVegaPayload(hexToBytes(msg.data));
             };
 
+        sensordata.devEui = msg.devEui;
         iot.sendevent(opts.iotservers, msg.devEui, sensordata);
         }
     return false;

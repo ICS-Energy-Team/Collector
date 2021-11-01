@@ -12,7 +12,7 @@ console.log("Hello! Starting " + CollectorName + " at " + Date());
 if( process.argv.length < 3 ) {
     console.log('Please specify JSON config name as first argument of script');
     process.exit(1);
-}
+    }
 
 const net = require('net');
 const schedule = require('node-schedule');
@@ -36,6 +36,8 @@ if( opts.moxa.Mercury234 && opts.moxa.Mercury234.active ){
     mechanisms.push( new Merc234(Common,'COLLECT') );
     mechanisms.push( new Merc234(Common,'LONGSEARCH') );
     if ( opts.moxa.Mercury234.activepowerschedule ) mechanisms.push( new Merc234(Common,'ACTIVEPOWER') );
+    if ( opts.moxa.Mercury234.dayenergyschedule ) mechanisms.push( new Merc234(Common,'DAYENERGY') );
+    if ( opts.moxa.Mercury234.monthenergyschedule ) mechanisms.push( new Merc234(Common,'MONTHENERGY') );
     }
 
 if ( opts.moxa.Mercury206 ) {
@@ -51,7 +53,7 @@ Common.plan.forEach(function(p){
 // RS485-Ethernet converter (MOXA, Teleofis, ...)
 var client = new net.Socket();
 
-var startmoment, endmoment;
+var startmoment, endmoment = +new Date();
 
 const ClientStates = {
     SLEEP: -1,
@@ -70,11 +72,14 @@ const ClientEvents = {
     READY: 1003,
     DEVICES_START_REQUEST: 1004
 };
-var stateJob, dataJob, timer;
+var stateJob, dataJob, timer, datacheckJob;
 
 setState(ClientStates.NOT_CONNECTED);
 // Let's go!
 stateJob = schedule.scheduleJob('*/2 * * * * *', stateClientMOXA);
+setTimeout(function(){
+    datacheckJob = schedule.scheduleJob(`*/${Common.moxa.datacheckinterval} * * * * *`, datacheck);
+    }, 200000); // wait 200 seconds for search mercury's
 
 async function stateClientMOXA(newevent) {
     switch (clientState) {
@@ -97,7 +102,9 @@ async function stateClientMOXA(newevent) {
             {
             dataJob.cancel();
             setState(ClientStates.NOT_CONNECTED);
-            return stateClientMOXA();
+            isMechanismWork = false;
+            setImmediate(stateClientMOXA);
+            return;
             }
         if( (newevent == ClientEvents.DEVICES_START_REQUEST) || stateChanged ) 
             {
@@ -167,7 +174,7 @@ client.on('data', function(buf) { // not asynchronous!!
     var data = curmechanism.parse(buf);
 
     if ( data === null ) {
-        sayError({error:'Bad sensor data'});
+        sayError({error:'Bad sensor data',message:'buffer: '+buf.toString('hex'),data:{len:buf.length}});
         return;
         }
     if ( data.error ) {
@@ -180,9 +187,19 @@ client.on('data', function(buf) { // not asynchronous!!
         }
     if ( data.devEui ) {
         var datatosend = {ts: endmoment, devEui: data.devEui, values: data.values};
+        if( data.correcttimestamp ) datatosend.ts += data.correcttimestamp; 
         iot.sendevent(opts.iotservers, data.devEui, datatosend);
         }
     });
+
+// check data income
+function datacheck(){
+    if ( (+new Date()) - endmoment > Common.moxa.datacheckinterval * 1000 ){ // '*1000' - seconds to ms
+        sayError({error:"ERROR", message:"client doesn't send packets more than " + Common.moxa.datacheckinterval + 's'});
+        process.emit('SIGTERM');
+        }
+    }
+
 
 // Add a 'close' event handler for the client socket
 client.on('close', function() {

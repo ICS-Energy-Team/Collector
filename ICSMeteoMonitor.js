@@ -1,4 +1,4 @@
-//'use strict';
+'use strict';
 
 /*
   MPV-702.1643 simple payload decoder.
@@ -8,72 +8,89 @@
 
 const CollectorName = "MeteoMonitor v. 0.30";
 console.log("Hello! Starting " + CollectorName + " at " + Date());
+if( process.argv.length < 3 ) {
+    console.log('Please specify JSON config name as first argument of script');
+    process.exit(1);
+    }
+
+// read options
+const readConfig = require('./config.js').readConfig;
+var opts = readConfig(process.argv[2]);
+
+// device
+var TheDevice = opts[opts.device.name], TheDeviceClass; //opts.meteo.find( (el) => { return el.model == "MPV-702"; });
+if( TheDevice.model === "MPV-702" ){
+    TheDeviceClass = new MeteoMPV(TheDevice);
+    }
+else if( TheDevice.model === "SOKOL-M1" ){
+    TheDeviceClass = new MeteoSokol(TheDevice);
+    }
+
+var dataJob, datacheckJob;
+const schedule = require('node-schedule');
+
 const net = require('net');
-const Publisher = require('./ICSpublish.js');
-
-// read config
-var opts = require('./'+process.argv[2]);
-
-var iot = new Publisher(opts);
-
-
-// MOXA
-MPVmeteo = opts.meteo.find( (el) => { return el.model == "MPV-702"; });
-
 var client = new net.Socket();
 
 function connect(){
-    console.log( "try to connect to " + MPVmeteo.port +':'+ MPVmeteo.host );
-    client.connect(MPVmeteo.port, MPVmeteo.host,
-      ()=>{console.log('CONNECTED TO: '+MPVmeteo.host+':'+MPVmeteo.port);});
+    console.log( "try to connect to " + TheDevice.port +':'+ TheDevice.host );
+    client.connect(TheDevice.port, TheDevice.host,
+        function(){
+            console.log('CONNECTED TO: '+TheDevice.host+':'+TheDevice.port);
+            if( ! TheDeviceClass.active ){
+                dataJob = schedule.scheduleJob(`*/${TheDevice.datainterval} * * * * *`, send);
+                }
+            datacheckJob = schedule.scheduleJob(`*/${TheDevice.datacheckinterval} * * * * *`, datacheck);
+            });
     }
 
 // It starts.
 connect();
 
-var endmoment;
+
+// get and send date
+const Publisher = require('./ICSpublish.js');
+var iot = new Publisher(opts);
+
+var endmoment = +new Date();
 var datatosend;
 // Add a 'data' event handler for the client socket
 // data is what the server sent to this socket
-client.on('data', function(data) {
-    endmoment = +new Date();
+client.on('data', function(buf) {
 
     // parse data
     //console.log(endmoment);
-    const datastr = data.toString();
-    //console.log(datastr);
-    var sensordata = {};
+    var data = TheDeviceClass.parse(buf);
 
-    for ( const el of datastr.split("\n") ) {
-        let info = el.split(',')
-        if ( info[0] == '$WIMWV' ) {
-            sensordata['WindDirection'] = parseFloat(info[1]);
-            sensordata['WindSpeed'] = parseFloat(info[3]);
-        } else if( info[0] == '$WIMMB' ) {
-            sensordata['BaroPressure'] = parseFloat(info[3]);
-        } else if( info[0] == '$WIMHU' ) {
-            sensordata['Humidity'] = parseFloat(info[1]);
-            sensordata['DewPoint'] = parseFloat(info[3]);
-        } else if( info[0] == '$WIMTA' ) {
-            sensordata['Temperature'] = parseFloat(info[1]);
+    if ( data === null ) {
+        sayError({error:'Bad sensor data',message:'buffer: '+buf.toString('hex'),data:{len:buf.length}});
+        return;
         }
-    }
+    if ( data.error ) {
+        sayError(data);
+        return;
+        }
 
-    datatosend = {ts:endmoment, devEui: MPVmeteo.tbDevEui, values: sensordata};
+    endmoment = +new Date();
+    datatosend = {ts:endmoment, devEui: TheDevice.tbDevEui, values: data};
     // send to iot
     iot.sendevent(opts.iotservers, datatosend.devEui, datatosend);
 });
 
+
+var message = requestcmd(SokolConfig.netaddress);
+function send(){
+    client.write(message);
+    }
+
+
 // check data income
-var lastCheckTime = +new Date();
-const checkPeriod = 30000; // 30 sec
-function checkIncome(){
-   if ( (+new Date()) - endmoment > checkPeriod ){
-     sayError(ERROR, "client doesn't send packets more than " + checkPeriod + 'ms');
-     process.emit('SIGTERM');
-   }
-}
-setInterval(checkIncome,checkPeriod);
+function datacheck(){
+    if ( (+new Date()) - endmoment > TheDevice.datacheckinterval ){
+        sayError({error:ERROR, message:"client doesn't send packets more than " + TheDevice.datacheckinterval + 's'});
+        process.emit('SIGTERM');
+        }
+    }
 
 
 
@@ -85,7 +102,7 @@ client.on('close', function(hadError) {
     });
 client.on('error', function(err) {
     console.log(err)
-    sayError(ERROR,'Socket client',err);
+    sayError({error:'ERROR',message:'Socket client',data:err});
     });
 process.on('SIGTERM',()=>{
     console.log('TERM');
@@ -99,12 +116,9 @@ process.on('SIGINT',()=>{
     process.emit('SIGTERM');
     });
 
-const ERROR = 0;
-var myerrors = {};
-myerrors[ERROR] = 'descr';
-function sayError(i, str, obj) {
-    if( i < 0 || i >= myerrors.length ) return;
-    if( typeof str === "undefined" ) str = '';
-    console.log('ERROR '+ i + ': ' + myerrors[i] + ' . ' + str);
-    if( typeof obj !== "undefined" ) console.log(obj);
+function sayError(errdata) {
+    if( errdata === undefined ) return;
+    console.log('ERROR: ' + errdata.error + ' ; Message: ' + errdata.message);
+    if( errdata.data ) console.log('Data: ' + JSON.stringify(errdata.data, null, 2) );
     }
+    

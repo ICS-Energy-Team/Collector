@@ -40,12 +40,15 @@ class Publisher{
         this._devices = {};
         this._GreenPL = {};
         this._mqttclients = { count: 0, ended: 0 };
+        
+        // for human datetime
+        this._moscowdate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'long', timeZone: 'Europe/Moscow', hour12: false });
         }
     async sendevent(iotservers, devEui, datatosend) {
         var json = JSON.stringify(datatosend,null,2);
         var valuesjson = JSON.stringify(datatosend.values,null,2);
         //console.log('Device ID ' + devEui +': data "'  + json + '" sent to: \n');
-        console.log('Device ID ' + devEui +' of timestamp '  + datatosend.ts + ' sent to:');
+        console.log('Device ID ' + devEui +' with timestamp '  + datatosend.ts + ' (' + this._moscowdate.format(datatosend.ts) +') sent to:');
 
         //for all destinations
         iotservers.forEach(function(iotserver) {
@@ -59,6 +62,41 @@ class Publisher{
                 this.saveToFile( this._dataArray.slice(0,this._elem) );
                 this._elem = 0;
                 }
+          } else if (iotserver.type == 'node-red') { // for node-red assume MQTT
+            if ( this._devices.hasOwnProperty('node-red') ){
+              this._devices['node-red'].connector.publish(iotserver.topic, json, function(err){
+                  if(err) {
+                      var cli_str = "mqclientid "+ 'node-red';
+                      console.log( cli_str + ", Cann't publish to node-red TB, error:" + err);
+                      }
+                  });
+            } else {
+                let mqclient = mqtt.connect('mqtt://'+iotserver.host+':'+iotserver.port);
+                this._devices['node-red'] = { connector:mqclient, data:datatosend };
+                var loc_mqttclients = this._mqttclients;
+                var loc_devices = this._devices;
+                mqclient.on('connect', function (topic, message) {
+                  loc_mqttclients.count += 1;
+                  console.log('node-red says connect.', ' mqtt clients counts: ' + JSON.stringify(loc_mqttclients));
+                  mqclient.publish(iotserver.topic,json,function(err){
+                    if(err) console.log("cann't publish on node-red, err:" + err );
+                    mqclient.removeAllListeners('connect');
+                    mqclient.on('connect',()=>{console.log('node-red says connect, '+strClientId);});
+                    });
+                  });
+                mqclient.on('message', function (topic, message) {
+                  console.log('Response from node-red server: '+ message.toString());
+                  });
+                mqclient.on('error', function (error) {
+                  console.log('Could not connect to node-red server with error: '+error);
+                  console.log('Flush MQTT channel to node-red server');
+                  loc_mqttclients.ended += 1;
+                  mqclient.end();
+                  delete loc_devices['node-red'];
+                  });
+             }
+             console.log('  mqtt on node-red server')
+
           } else if (iotserver.type == 'rightech') { // for rightech assume MQTT
               console.log('Rightech server by MQTT...');
               let mqclient = mqtt.connect('mqtt://'+iotserver.host+':'+iotserver.port, {clientId: devEui});
@@ -80,9 +118,6 @@ class Publisher{
                 });
           } else if (iotserver.type == 'thingsboard') {
               let devToken = devEui;
-              if( iotserver.hasOwnProperty('keys') && iotserver.keys.hasOwnProperty(devEui) ){
-                  devToken = iotserver.keys[devEui];
-                  }
 
               let teleoptions = {
                   host: iotserver.host,
@@ -91,12 +126,14 @@ class Publisher{
                   method: 'POST'
                   };
 
+              let devID = teleoptions.host +'/'+ devToken;
+
             if( iotserver.protocol == 'mqtt' ) {
-                if ( this._devices.hasOwnProperty(devToken) ){
-                  this._devices[devToken].sendalltime = datatosend.ts;
-                  this._devices[devToken].connector.publish('v1/devices/me/telemetry', json, function(err){
+                if ( this._devices.hasOwnProperty(devID) ){
+                  this._devices[devID].sendalltime = datatosend.ts;
+                  this._devices[devID].connector.publish('v1/devices/me/telemetry', json, function(err){
                       if(err) {
-                          var cli_str = "mqclientid "+ this._devices[devToken].connector.options.clientId;
+                          var cli_str = "mqclientid "+ this._devices[devID].connector.options.clientId;
                           console.log( cli_str + ", Cann't publish to TB, error:" + err);
                           }
                       });
@@ -116,11 +153,11 @@ class Publisher{
                           devices[devToken].connector.publish('v1/devices/me/telemetry',smalljson);
                         }
                     }*/
-                    this._devices[devToken].data = datatosend;
+                    this._devices[devID].data = datatosend;
                 } else {
                     let mqclient = mqtt.connect('mqtt://'+iotserver.host+':'+iotserver.port, {username: devToken});
                     let strClientId = 'mqclientid '+ mqclient.options.clientId;
-                    this._devices[devToken] = { connector:mqclient, data:datatosend, sendalltime:datatosend.ts };
+                    this._devices[devID] = { connector:mqclient, data:datatosend, sendalltime:datatosend.ts };
                     var loc_mqttclients = this._mqttclients;
                     var loc_devices = this._devices;
                     /*mqclient.on('connect', function () {
@@ -144,33 +181,33 @@ class Publisher{
                       console.log('Flush MQTT channel to thingsboard server');
                       loc_mqttclients.ended += 1;
                       mqclient.end();
-                      delete loc_devices[devToken];
+                      delete loc_devices[devID];
                       });
                     /*mqclient.on('reconnect', function () {
                       console.log('thingsboard says reconnect, we say good bye, mqclientid '+ mqclient.options.clientId);
                       mqclient.end();
-                      delete devices[devToken];
+                      delete devices[devID];
                       });*/
                     /*mqclient.on('end', function () {//'end' is about client.end()!
                       console.log('thingsboard says end, mqclientid '+ mqclient.options.clientId);
                       mqclient.end();
-                      delete devices[devToken];
+                      delete devices[devID];
                       });*/
                     mqclient.on('offline', function () {
                       console.log('thingsboard says offline, '+ strClientId);
                       //mqclient.end();
-                      //delete devices[devToken];
+                      //delete devices[devID];
                       });
                     mqclient.on('disconnect', function (p) {
                       console.log(strClientId + ', thingsboard says disconnect '+p);
                       //mqclient.end();
-                      //delete devices[devToken];
+                      //delete devices[devID];
                       });
                     mqclient.on('close', function () {
                       console.log('thingsboard says close, '+ strClientId);
                       loc_mqttclients.ended += 1;
                       mqclient.end();
-                      delete loc_devices[devToken];
+                      delete loc_devices[devID];
                       });
                 }
             } else if (iotserver.protocol == 'https') {
@@ -302,7 +339,7 @@ class Publisher{
     async saveToFile (data) 
         {
         if ( typeof this._stream === "undefined" ) return;
-        var json = JSON.stringify(data) + '\n';
+        var json = JSON.stringify(data) + ',\n';
         this._stream.write(json, (err) => {
             if (err) return console.log(err);
             console.log('The file has been saved.');

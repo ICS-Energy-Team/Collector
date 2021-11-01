@@ -53,7 +53,7 @@ client.on('message', function (topic, message) {
         let moment = +new Date();
         let data = {};
         data[t.name] = parseFloat(message.toString());
-        var datatosend = {ts: moment, devEui: t.devEUI, values: data};
+        let datatosend = {ts: moment, devEui: t.devEUI, values: data};
         iot.sendevent(opts.iotservers, t.devEUI, datatosend);
         }
     
