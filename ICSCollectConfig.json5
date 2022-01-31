@@ -5,7 +5,9 @@
   "loraserver": {
     "host": "193.232.196.28",
     "port" : 8002,
-    "password": "1123"
+    "password": "1123",
+    "datacheckinterval": 300,
+    "datacheckintervalunit": "s"
   },
   "moxa": {
     "host": "10.101.0.50",

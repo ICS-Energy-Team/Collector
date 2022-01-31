@@ -9,3 +9,7 @@
     - SIGINT after socket error
     - LOG asking mercury ID in LONGSEARCH substate
     - fix uncaughtException handler
+31 January 2022
+  ICSLoraMonitor.js
+    - datacheck function - check that each opts.loraserver.datacheckinterval we get something from LoraServer, else exit application.
+    - change config.js for datacheck, and ICSCollectConfig.json5

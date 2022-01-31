@@ -14,8 +14,72 @@
   peter@elsys.se
 */
 
-const CollectorName = "LoraMonitor v. 1.00";
+const CollectorName = "LoraMonitor v. 1.10";
+const CollectorVersionDate = "31 Jan 2022";
 console.log("Hello! Starting " + CollectorName + " at " + Date());
+
+const WebSocket = require('websocket').w3cwebsocket;
+const Publisher = require('./ICSpublish.js');
+
+// read options
+const readConfig = require('./config.js').readConfig;
+var opts = readConfig(process.argv[2]);
+
+var iot = new Publisher(opts);
+
+var wsAddress = "ws://" + opts.loraserver.host + ":" + opts.loraserver.port;
+var outgoingMessage = '{ "cmd": "auth_req", "login": "root", "password": "' + opts.loraserver.password + '" }';
+console.log('Opening Lora Server WebSocket...');
+var socket = new WebSocket(wsAddress);
+//console.log(socket);
+
+socket.onopen = function() {
+    console.log("connection opened");
+    socket.send(outgoingMessage);
+    setInterval( datacheck, opts.loraserver.datacheckinterval * (opts.loraserver.datacheckintervalunit=='s'?1000:1) );
+    };
+//console.log("Collecting response...");
+
+// обработчик входящих сообщений
+var endmoment = + new Date();
+socket.onmessage = function(event) {
+    //  console.log("Got: "+event.data);
+    endmoment = + new Date();
+    var msg = JSON.parse(event.data);
+    if ((msg.type == "UNCONF_UP") || (msg.type == "CONF_UP")) {
+        //console.log("Got: "+msg.data+' from '+msg.devEui+', type='+msg.type);
+        if (isElsys(msg.devEui)) {
+            var sensordata = DecodeElsysPayload(hexToBytes(msg.data));
+            }
+        else {
+            var sensordata = DecodeVegaTD11Payload(Buffer.from(msg.data,'hex'));
+            };
+
+        if ( sensordata === null ) {
+            doError(eRESPONSE, 'decoder return null', {buffer:event.data, data:msg });
+            return;
+            }
+        if ( sensordata.error ) {
+            doError(sensordata);
+            return;
+            }
+    
+        sensordata.devEui = msg.devEui;
+        iot.sendevent(opts.iotservers, msg.devEui, sensordata);
+        }
+    return false;
+    };
+
+// check data income
+var dcheck_interval = opts.loraserver.datacheckinterval * (opts.loraserver.datacheckintervalunit=='s'?1000:1);
+function datacheck(){
+    if ( (+new Date()) - endmoment > dcheck_interval ){
+        doError({error:"ERROR", message:"client doesn't send packets more than " + (dcheck_interval/1000).toFixed(2) + 'sec'});
+        process.emit('SIGTERM');
+        }
+    }
+
+
 
 const TYPE_TEMP = 0x01; //temp 2 bytes -3276.8°C -->3276.7°C
 const TYPE_RH = 0x02; //Humidity 1 byte  0-100%
@@ -43,15 +107,6 @@ const TYPE_PULSE2_ABS = 0x17; //4bytes no 0->0xFFFFFFFF
 const TYPE_ANALOG2 = 0x18; //2bytes voltage in mV
 const TYPE_EXT_TEMP2 = 0x19; //2bytes -3276.5C-->3276.5C
 
-const WebSocket = require('websocket').w3cwebsocket;
-const Publisher = require('./ICSpublish.js');
-
-// read options
-const readConfig = require('./config.js').readConfig;
-var opts = readConfig(process.argv[2]);
-
-var iot = new Publisher(opts);
-
 function isElsys(devEui) {
     if (devEui[0] == "A") {
         return true;
@@ -72,11 +127,6 @@ function bin8dec(bin) {
     if (0x80 & num)
         num = -(0x0100 - num);
     return num;
-}
-
-function hex_to_ascii(str){
-        //console.log('hex_to_ascii: '+str);
-        return Buffer.from(str, 'hex');
 }
 
 function hexToBytes(hex) {
@@ -267,42 +317,26 @@ function DecodeVegaPayload(data) {
 
     var ret = {ts: +new Date(), values: obj};
     return ret;
-};
+    };
+
+function DecodeVegaTD11Payload(buf) {
+    if( buf.length < 13 ) return sayError(eLENGTH,'buffer.length < 13', {bufer:buf.toString('hex')});
+    var obj = {
+        charge: buf.readUInt8(1),
+        limitexceed: buf.readUInt8(2),
+        time: buf.readUInt32LE(3),
+        temperature: buf.readInt16LE(7) / 10,
+        mintemperature: buf.readInt8(9),
+        maxtemperature: buf.readInt8(10),
+        reason: buf.readUInt8(11),
+        inputstate: buf.readUInt8(12)
+        };
+    var ret = {ts: +new Date(), values: obj};
+    return ret;
+    };
 
 // LoRa
 
-setTimeout(()=>process.exit() , 172800000/* 2 day in msec */);
-
-var wsAddress = "ws://" + opts.loraserver.host + ":" + opts.loraserver.port;
-var outgoingMessage = '{ "cmd": "auth_req", "login": "root", "password": "' + opts.loraserver.password + '" }';
-console.log('Opening Lora Server WebSocket...');
-var socket = new WebSocket(wsAddress);
-//console.log(socket);
-
-socket.onopen = function() {
-    console.log("connection opened");
-    socket.send(outgoingMessage);
-    };
-//console.log("Collecting response...");
-
-// обработчик входящих сообщений
-socket.onmessage = function(event) {
-    //  console.log("Got: "+event.data);
-    var msg = JSON.parse(event.data);
-    if ((msg.type == "UNCONF_UP") || (msg.type == "CONF_UP")) {
-        //console.log("Got: "+msg.data+' from '+msg.devEui+', type='+msg.type);
-        if (isElsys(msg.devEui)) {
-            var sensordata = DecodeElsysPayload(hexToBytes(msg.data));
-            }
-        else {
-            var sensordata = DecodeVegaPayload(hexToBytes(msg.data));
-            };
-
-        sensordata.devEui = msg.devEui;
-        iot.sendevent(opts.iotservers, msg.devEui, sensordata);
-        }
-    return false;
-    };
 
 socket.onerror = function() {
     console.log('Connection Error. Stop');
@@ -313,3 +347,24 @@ socket.onclose = function() {
     console.log('websocket Closed. Stop');
     process.exit();
     };
+
+
+const eERROR = Symbol.for('ERROR'), eLENGTH = Symbol.for('LENGTH'), eRESPONSE = Symbol.for('RESPONSE');
+const errors_msg = {
+    [eERROR]: 'Some error', 
+    [eLENGTH]: 'RECEIVED bad length of data',
+    [eRESPONSE]: 'RECEIVED BAD response'
+    };
+function sayError(err, str, obj) {
+    return {
+            error: err, 
+            message: str ?? errors_msg[err] ?? errors_msg[eERROR],
+            data: obj
+        };
+    }
+
+async function doError(errdata) {
+    console.log('ERROR: ' + errdata.error?.toString() + ' . ' + errdata.message);
+    if( errdata.data ) console.log('Data: ' + JSON.stringify(errdata.data, null, 2) );
+    }    
+    

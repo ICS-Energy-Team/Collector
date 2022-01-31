@@ -13,6 +13,7 @@ function readConfig (filename) {
         }
     else opts.configname = filename;
 
+    opts.errors = [];
     optValidator(opts);
     return opts;
     }
@@ -21,4 +22,14 @@ function optValidator(opts) {
     if( opts.moxa ){
         opts.moxa.connecttimeout = Math.max( 0, Math.min(59, opts.moxa.connecttimeout) );
         }
+    if( ! opts.loraserver?.datacheckinterval ){
+        opts.errors.push({msg:'missing loraserver.datacheckinterval, set to 30 sec'});
+        opts.loraserver.datacheckinterval = 30;
+        opts.loraserver.datacheckintervalunit = 's';
+        }
+    if( ! opts.loraserver?.datacheckintervalunit ){
+        opts.errors.push({msg:'missing loraserver.datacheckintervalunit, set to sec'});
+        opts.loraserver.datacheckintervalunit = 's';
+        }
+    
     }
