@@ -3,80 +3,127 @@
 const crc16 = require('crc').crc16modbus;
 
 /*
-  Meteostation Sokol-M simple payload decoder.
+  Mercury206 simple payload decoder.
   Use it as it is or remove the bugs :)
   vkorepanov@ipu.ru
 */
 
 // Now only for command 63h
-class MeteoSokol{
-    constructor(device){
-        this._version = "MeteoMonitor v. 0.9 for Meteostation Sokol-M";
-        this._versiondate = "05 Feb 2022";
+class Mercury206{
+    constructor(moxa){
+        // 2F - чтение серийного номера
+        // 26h - активная мощность в нагрузке
+        // 63h = 99d - Чтение значений U,I,P
+        // 81h - Чтение доп. параметров сети (частота) и текущего тарифа
+        this._commands = {'SERIALNUM': '2F', 'VCP': '63'};
+        this._parsers = { 99: this._parseVCP }; // 63h = 99d
+        this._version = "MercuryMonitor v. 0.9 for Mercury 206";
+        this._versiondate = "23 Dec 2020";
+        this._moxa = moxa;
+        this._alldevices = moxa.Mercury206.devices; // [{active:true,ID:<..>}, ...]
+        this._devices = moxa.Mercury206.devices.filter(function(v){return v.active;});
+        this._i = -1;
         this.request = this._request;
         this.parse = this._parseAnswer;
-        this.active = false;
-        this.message = requestcmd(device.netaddress);
         }
 
     _request(){
-        return this.message;
+        this._i += 1;
+        if( this._i >= this._devices.length ) {
+            this._i = -1;
+            return "END";
+            }
+
+        let d = this._devices[this._i].ID;
+        //console.log( "Mercury206_id" + d );
+        return {request: this._requeststring(d), timeout: this._moxa.Mercury206.timeout};
+        }
+
+    _requeststring(dID){
+        const buf = Buffer.allocUnsafe(4);
+        buf.writeUInt32BE(dID,0);
+
+        var outHex = buf.toString('hex') + this._commands['VCP'];
+        var crcHex = ('0000'+crc16(Buffer.from(outHex,'hex')).toString(16)).slice(-4); // crc for this command
+        var outgoingMessage = Buffer.from(outHex+crcHex.substr(2,2)+crcHex.substr(0,2),'hex');
+        return outgoingMessage;
         }
     _parseAnswer(buf){
-        var info = {};
-        try{
-        for ( i = 9 ; i < buf.length ; i++ ) {
-            switch (i) {
-                case 0: // device address
-                case 1: // command code
-                case 2: // bytes in load
-                case 3: // errors, type, ...
-                case 4: // firmware version
-                case 5: // UNIX time...
-                case 6: // UNIX time...
-                case 7: // UNIX time...
-                case 8: // UNIX time...
-                    break;
-                case 9:
-                    info.temperature = buf.readInt16BE(i) / 100; // C
-                    i++; break;
-                case 11:
-                    info.pressure = buf.readUInt16BE(i) * 10; // Pa
-                    i++; break;
-                case 13:
-                    info.humidity = buf.readUInt16BE(i); // %
-                    i++; break;
-                case 15:
-                    info.windspeed = buf.readUInt16BE(i) / 100; // m/s
-                    i++; break;
-                case 17:
-                    info.winddirection = buf.readUInt16BE(i); // degree
-                    i++; break;
-                case 19:
-                    info.rainfall = buf.readUInt16BE(i) / 10; // mm
-                    i++; break;
-                case 21:
-                    info.ultraviolet = buf.readUInt16BE(i) / 100 ; // W/m^2
-                    i++; break;
-                case 23:
-                    info.illumination = buf.readUInt16BE(i) ; // 1 lux
-                    i++; break;
-            }
-        }}
-        catch(e){
-            console.err('Error in MeteoSokolparser._parseAnswer while parsing data from SOKOL meteostation');
-            console.err(e);
-            }
-        return info;
+        var dID = buf.readUInt32BE(0);
+        if( buf.length < 5 ) return sayError(RESPLESS5,'Mercury206parser',buf);
+        var cmd = buf.readUInt8(4);
+        if ( this._parsers.hasOwnProperty(cmd) )
+            return {
+                devEui: (this._moxa.name + '-206-' + dID).slice(-20), 
+                values: this._parsers[cmd](buf), 
+                timeout: this._moxa.Mercury206.timeout
+                };
+        else
+            return sayError(BADCOMMAND,'Mercury206parser',buf);
         }
-    
-    }
+    _parseVCP(buf){
+        /* // variant 1
+        var U = (buf.readUInt8(5)>>>4) * 100;
+        var a1 = buf.readUInt8(6);
+        U += (a1&0x0F)*10;
+        U += a1>>>4;
 
-function requestcmd(id){
-    var buf = Buffer.from([id, 0x03,0x00,0x00,0x00,0x0C, 0x00,0x00]);
-    var vcrc = crc16(buf.slice(0, buf.length-2));
-    buf.writeUInt16LE(vcrc, buf.length-2);
-    return buf;
-    }
-    
-module.exports = MeteoSokol;
+        var I = (buf.readUInt8(7)>>>4) * 100;
+        a1 = buf.readUInt8(8);
+        I += (a1&0x0F)*10;
+        I += a1>>>4;
+
+        var P = (buf.readUInt8(9)>>>4) * 10000;
+        a1 = buf.readUInt8(10);
+        P += (a1&0x0F)*1000;
+        P += (a1>>>4)*100;
+        a1 = buf.readUInt8(11);
+        P += (a1&0x0F)*10;
+        P += a1>>>4;
+        */
+
+        // variant 2:  https://github.com/sergray/energy-meter-mercury206
+        var V = parseFloat(buf.toString('hex',5,7)) / 10;
+        var I = parseFloat(buf.toString('hex',7,9)) / 100;
+        var P = parseFloat(buf.toString('hex',9,12)) / 1000;
+        return {"V": V, "I": I, "P": P};
+        }
+}
+
+const RESPLESS5 = 0;
+const BADCOMMAND = 1;
+var myerrors = {};
+myerrors[RESPLESS5] = 'RECEIVED response of length < 5';
+myerrors[BADCOMMAND] = 'RECEIVED unknown command';
+
+function sayError(i, str, obj) {
+    if( i < 0 || i >= myerrors.length ) return;
+    if( typeof str === "undefined" ) str = '';
+    var a = {error: myerrors[i], message: str};
+    if( typeof obj !== "undefined" ) a.data = obj;
+    return a;
+    }    
+
+module.exports = Mercury206;
+
+/*// answer to 63h command
+    > ask(DeviceIDs[1]);
+    WROTE: 027cf85b63beb8
+    undefined
+// answer: ADDR CMD U-I-P CRC
+    > 027cf85b 63 2142 0000 000000 7b53
+                  2153 0000 000001
+                  2157
+                  2141
+                  2150
+                  2147
+                  2174
+              4221 = 0100 0010 0010 0001
+              5321 = 0101 0011 0010 0001
+              5721 = 0101 0111 0010 0001
+              7421 = 0111 0100 0010 0001
+
+0010 0001 0100 0010 = 214,2
+0010 0001 0101 0011 = 215,3
+0010 0001 0101 0111 = 215,7
+0010 0001 0111 0100 = 217,4*/

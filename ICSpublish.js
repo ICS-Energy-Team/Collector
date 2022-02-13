@@ -44,12 +44,11 @@ class Publisher{
         // for human datetime
         this._moscowdate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'long', timeZone: 'Europe/Moscow', hour12: false });
         }
-        
     async sendevent(iotservers, devEui, datatosend) {
         var json = JSON.stringify(datatosend,null,2);
         var valuesjson = JSON.stringify(datatosend.values,null,2);
         //console.log('Device ID ' + devEui +': data "'  + json + '" sent to: \n');
-        console.log('Device ID ' + devEui +' with timestamp '  + datatosend.ts + ' sent to:');
+        console.log('Device ID ' + devEui +' with timestamp '  + datatosend.ts + ' (' + this._moscowdate.format(datatosend.ts) +') sent to:');
 
         //for all destinations
         iotservers.forEach(function(iotserver) {

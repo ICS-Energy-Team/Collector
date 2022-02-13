@@ -6,8 +6,7 @@
   vkorepanov@ipu.ru
 */
 
-const CollectorName = "MeteoMonitor v. 0.90";
-const CollectorVersionDate = "05 Feb 2022";
+const CollectorName = "MeteoMonitor v. 0.30";
 console.log("Hello! Starting " + CollectorName + " at " + Date());
 if( process.argv.length < 3 ) {
     console.log('Please specify JSON config name as first argument of script');
@@ -16,102 +15,95 @@ if( process.argv.length < 3 ) {
 
 // read options
 const readConfig = require('./config.js').readConfig;
-const opts = readConfig(process.argv[2]);
+var opts = readConfig(process.argv[2]);
 
 // device
-const TheDevice = opts[opts.device.name];
-var TheDeviceClass, devicemessage; //opts.meteo.find( (el) => { return el.model == "MPV-702"; });
+var TheDevice = opts[opts.device.name], TheDeviceClass; //opts.meteo.find( (el) => { return el.model == "MPV-702"; });
 if( TheDevice.model === "MPV-702" ){
     TheDeviceClass = new MeteoMPV(TheDevice);
     }
 else if( TheDevice.model === "SOKOL-M1" ){
     TheDeviceClass = new MeteoSokol(TheDevice);
     }
-else{ 
-    console.log('unknown device model');
-    process.exit(1);
- }
 
-var dataJob;
+var dataJob, datacheckJob;
 const schedule = require('node-schedule');
 
 const net = require('net');
-var client = null; //new net.Socket();
+var client = new net.Socket();
+
+function connect(){
+    console.log( "try to connect to " + TheDevice.port +':'+ TheDevice.host );
+    client.connect(TheDevice.port, TheDevice.host,
+        function(){
+            console.log('CONNECTED TO: '+TheDevice.host+':'+TheDevice.port);
+            if( ! TheDeviceClass.active ){
+                dataJob = schedule.scheduleJob(`*/${TheDevice.datainterval} * * * * *`, send);
+                }
+            datacheckJob = schedule.scheduleJob(`*/${TheDevice.datacheckinterval} * * * * *`, datacheck);
+            });
+    }
 
 // It starts.
-client = connect(client);
+connect();
+
 
 // get and send date
 const Publisher = require('./ICSpublish.js');
-const iot = new Publisher(opts);
+var iot = new Publisher(opts);
 
+var endmoment = +new Date();
+var datatosend;
 // Add a 'data' event handler for the client socket
 // data is what the server sent to this socket
-var endmoment;
-function on_socket_data(buf) {
+client.on('data', function(buf) {
 
-    endmoment = + new Date();
     // parse data
     //console.log(endmoment);
     var data = TheDeviceClass.parse(buf);
 
     if ( data === null ) {
-        data = {error:'Bad sensor data',message:'parser return null',data:{len:buf.length,buffer:buf.toString('hex')}};
+        sayError({error:'Bad sensor data',message:'buffer: '+buf.toString('hex'),data:{len:buf.length}});
+        return;
         }
     if ( data.error ) {
         sayError(data);
         return;
         }
 
+    endmoment = +new Date();
+    datatosend = {ts:endmoment, devEui: TheDevice.tbDevEui, values: data};
     // send to iot
-    iot.sendevent(opts.iotservers, TheDevice.tbDevEui, 
-        {ts:endmoment, devEui: TheDevice.tbDevEui, values: data});
+    iot.sendevent(opts.iotservers, datatosend.devEui, datatosend);
+});
+
+
+var message = requestcmd(SokolConfig.netaddress);
+function send(){
+    client.write(message);
     }
 
-function connect(oldclient){
-    if ( oldclient !== null && oldclient.connecting ) oldclient.destroy();
-    console.log( "try to connect to " + TheDevice.port +':'+ TheDevice.host );    
 
-    const client = net.createConnection(TheDevice.port, TheDevice.host, 
-        function(){
-            console.log('CONNECTED TO: '+TheDevice.host+':'+TheDevice.port);
-            if( ! TheDeviceClass.active ){
-                devicemessage = TheDeviceClass.request();
-                dataJob = schedule.scheduleJob(`*/${TheDevice.datainterval} * * * * *`, send);
-                }
-            });
-
-    client.setNoDelay(true);
-    client.setKeepAlive(true,TheDevice.keepaliveInterval);
-
-    client.on('data' , on_socket_data);
-    client.on('close', on_socket_close);
-    client.on('end'  , on_socket_end);
-    client.on('error', on_socket_error);
-
-    return client;
-    }
-
-    function send(){
-        client.write(devicemessage);
+// check data income
+function datacheck(){
+    if ( (+new Date()) - endmoment > TheDevice.datacheckinterval ){
+        sayError({error:ERROR, message:"client doesn't send packets more than " + TheDevice.datacheckinterval + 's'});
+        process.emit('SIGTERM');
         }
+    }
+
 
 
 // Add a 'close' event handler for the client socket
-function on_socket_close(hadError) {
+client.on('close', function(hadError) {
     if( hadError ){ console.log('socket had transmission error'); }
     console.log('Connection closed. Exit');
     process.emit('SIGTERM');
-    };
-function on_socket_end(){
-    console.log('Other side send FIN packet');
-    process.emit('SIGTERM');
-    };
-function on_socket_error(err) {
+    });
+client.on('error', function(err) {
     console.log(err)
     sayError({error:'ERROR',message:'Socket client',data:err});
-    };
-
+    });
 process.on('SIGTERM',()=>{
     console.log('TERM');
     client.end();
