@@ -2,6 +2,10 @@
 
 const crc16 = require('crc').crc16modbus;
 
+import { readjson } from 'config';
+import { writeFile } from 'fs/promises';
+
+
 /*
   Mercury234 simple payload decoder.
   Use it as it is or remove the bugs :)
@@ -25,15 +29,19 @@ class Mercury234{
             }
         
         this.Common = common;
+        this._datafile = common.optionsfile + '.parserdata';
         this._searchdelay = common.moxa.Mercury234.searchdelay;
         this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
         this._cmdmaxtimeout = common.moxa.Mercury234.maxtimeout;
         this.MIN_DEVICE_ID = 1;
         this.MAX_DEVICE_ID = 250;
-        this._requested_devices = [];
+        //this._requested_devices = [];
 
         this._mode = mode;
         this._EnergyModes = new Set(['ACTIVEPOWER', 'DAYENERGY', 'MONTHENERGY']);
+        // for human datetime
+        this._moscowdate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'long', timeZone: 'Europe/Moscow', hour12: false });
+
         if ( mode == 'SEARCH' ) {
             this.request = this._search;
             this.parse = this._parseSearch;
@@ -41,6 +49,12 @@ class Mercury234{
             if (typeof common.moxa.Mercury234.devices === 'undefined')
                 common.moxa.Mercury234.devices = [];
             this._i = this.MIN_DEVICE_ID - 1;
+
+            const found_devices = readjson(common.optionsfile + '.parserdata').found_devices;
+            if( Array.isArray(found_devices) && (found_devices.length > 0) ){
+                this._i = this.MAX_DEVICE_ID + 1; // for end of search
+                this._devices = found_devices;
+                }
             }
         else if ( mode == 'COLLECT' ) {
             this._runningcmd = 'FAST';
@@ -75,6 +89,7 @@ class Mercury234{
         }// constructor
 
     _search(){
+        if( this._i == 0 ) console.log("START SEARCH")
         this._i += 1;
         if( this._i > this.MAX_DEVICE_ID ){
             this._i = this.MIN_DEVICE_ID - 1;
@@ -87,12 +102,12 @@ class Mercury234{
             console.log("Found "+this._devices.length+" devices: "+this._devices);
             return "DELETE";
             }
-        return {request: requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
+        return { request: requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
         }
 
     _request(){
         if( this._i == -1 ) {
-            console.log('REQUEST ALL ' + this._devices.length + ' DEVICES: ' + this._devices);
+            console.log('REQUEST ALL ' + this._devices.length + ' DEVICES: ' + this._devices + '    at ' + this._moscowdate.format(+new Date()));
             }
 
         this._i += 1;
@@ -101,8 +116,9 @@ class Mercury234{
             return "END";
             }
 
-        let d = this._devices[this._i];
-        this._requested_devices.push(d);
+        const d = this._devices[this._i];
+        //this._requested_devices.push(d);
+        this._runningdevice = d;
         return {
             request: requestcmd(d,this._commands[this._runningcmd]), 
             timeout: this._cmdmaxtimeout
@@ -124,12 +140,18 @@ class Mercury234{
         return {request: requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
         }
     async _endlongsearch(){
-        if ( this._devices.length == 1 ) {
-            if ( !this.Common.moxa.Mercury234.devices.includes(this._devices[0]) ){
-                this.Common.moxa.Mercury234.devices.push(this._devices[0]);
+        if ( this._devices.length > 1 ) console.log('LOG: Strange, I found more than 1 device');
+        let flag = false;
+        for( let i = 0; i<this._devices.length; i++){
+            if ( !this.Common.moxa.Mercury234.devices.includes(this._devices[i]) ){
+                this.Common.moxa.Mercury234.devices.push(this._devices[i]);
+                flag = true;
                 }
             }
-        console.log("Mercury234parser. Found " + this._devices.length + " devices when in _longsearch");
+        if ( flag ){
+            writeFile(this._datafile,JSON.stringify(this.Common.moxa.Mercury234.devices,'utf8'));
+            }
+        console.log("Mercury234parser. Found " +  this._devices + " devices when in _longsearch");
         this._devices = [];
         this._tick = false;
         }
@@ -149,6 +171,7 @@ class Mercury234{
             this._commands['MONTHENERGY'] = setmonthenergy(d);
             }
         }
+
     _longRequest(){ // one per datainterval request
         if( ! this._turnOn ) return "END";
         if( this._tick ) { // for only single run of this mechanism in one moxa.datainterval
@@ -167,57 +190,60 @@ class Mercury234{
 
         this._tick = true;
         let d = this._devices[this._i];
-        this._requested_devices.push(d);
-        return {request: requestcmd(d,this._commands[this._runningcmd]), timeout: this._cmdmaxtimeout };
+        //this._requested_devices.push(d);
+        return { request: requestcmd(d,this._commands[this._runningcmd]), timeout: this._cmdmaxtimeout };
         }
 
     _parseSearch(buf){
-        if( buf.length < 2 )
-            return sayError(RESPLESS2);
+        if( buf.length < 4 )
+            return sayError(eLENGTH,undefined,{cmp:-1, buflen: buf.length, buf: buf.toString('hex')});
+        if( buf.length > 4 )
+            return sayError(eLENGTH,undefined,{cmp:1, buflen: buf.length, buf: buf.toString('hex')});
 
         var dID = buf.readUInt8(0);
 
         // check CRC
         if ( buf.readUInt16LE(buf.length-2) != crc16(buf.slice(0, buf.length-2)) ) {
-            return sayError(CRCFAIL,'search', {id: dID, datalen : buf.length});
+            return sayError(eCRC,  'MODBUS error, id from packet=' + dID, {where: 'Mercury234._parseSearch'});
             }
 
         // for filling deviceID table mode
         this._devices.push(dID);
-        return {};
+        return {timeout:0};
         }
 
     _parseAnswer(buf){
-        if( buf.length < 2 )
-            return sayError(RESPLESS2);//console.log('RECEIVED response of length < 2.');
+        let cmp = this.check_buf_length(this._runningcmd,buf);
+        if ( cmp != 0 )
+            return sayError(eLENGTH,undefined,{cmp: cmp, buflen:buf.length, buf: buf.toString('hex')});
     
-        var dID = buf.readUInt8(0);
-    
+        var dID = buf.readUInt8(0);        
+
         // check CRC
         if ( buf.readUInt16LE(buf.length-2) != crc16(buf.slice(0, buf.length-2)) ) {
-            let er = 'id=' + dID + ' reqdevice=' + this._devices[this._i];
-            return sayError(CRCFAIL, er, {datalen : buf.length, data: buf.toString('hex')});
+            let er = 'MODBUS error, id from packet=' + dID + ' requested id=' + this._devices[this._i];
+            return sayError(eCRC, er, {datalen : buf.length, buf: buf.toString('hex'), where: 'Mercury234._parseAnswer'});
             }
     
         // ok we have sensor data receive mode
-        var timeout = this._cmdmaxtimeout;
+        var timeout = this._cmdmintimeout;
+        /*var timeout = this._cmdmaxtimeout;
         let ii = this._requested_devices.indexOf(dID);
         if( ii != -1 ) {
             this._requested_devices.splice(ii,1);
             timeout = this._cmdmintimeout;
             }
         else {
-            return sayError(ERROR,'dID not in RequestedDevices');
-            }
+            return sayError(eERROR,'dID not in RequestedDevices', {dID: dID});
+            }*/
     
         var devEui = this.Common.moxa.name.slice(-10) +
                     '-MR234-' + ('000'+dID.toString(10)).slice(-3);
-        /* assert(msg.length == 20); */
     
         //console.log('Parsing command '+ runningcommand +'...');   
         var sensordata = this.parseRequest(this._runningcmd,buf);
         if ( sensordata === null ){
-            return sayError(RESPBAD, 'buffer: '+buf.toString('hex'), {buflen:buf.length, devEui: devEui});
+            return sayError(eRESPONSE, 'buffer: '+buf.toString('hex'), {buflen:buf.length, devEui: devEui});
             }
         var data = {devEui: devEui, values: sensordata, timeout: timeout};
 
@@ -233,13 +259,17 @@ class Mercury234{
             this._commands['MONTHENERGY'] = setmonthenergy(arg);
         return requestcmd(id, this._commands[cmd]);
         }
+
     parseRequest(cmd,buf){
-        var res;
+        var res = null;
         switch( cmd ){
             case 'FAST': // моментальные значения: ускоренное измерение
-                if( ! ( (buf.length === 89) || (buf.length === 98) ) ) { return null; }
-                res = {  PT: readPowerValue(buf, 1, 'P')/100,   P1: readPowerValue(buf, 4, 'P')/100,   P2:readPowerValue(buf, 7, 'P')/100,
-                    P3: readPowerValue(buf, 10, 'P')/100,  QT: readPowerValue(buf, 13, 'Q')/100,  Q1:readPowerValue(buf, 16, 'Q')/100,
+                let [pt,st] = read_activepower_and_sign(buf, 1);
+                let [p1,s1] = read_activepower_and_sign(buf, 4);
+                let [p2,s2] = read_activepower_and_sign(buf, 7);
+                let [p3,s3] = read_activepower_and_sign(buf, 10);
+                res = {  PT: pt,    P1: p1,   P2: p2,   P3: p3, PTsign: pt*st,  P1sign: p1*s1,  P2sign: p2*s2,  P3sign: p3*s3,
+                    QT: readPowerValue(buf, 13, 'Q')/100,  Q1:readPowerValue(buf, 16, 'Q')/100,
                     Q2: readPowerValue(buf, 19, 'Q')/100,  Q3: readPowerValue(buf, 22, 'Q')/100,  ST:readPowerValue(buf, 25, 'S')/100,
                     S1: readPowerValue(buf, 28, 'S')/100,  S2: readPowerValue(buf, 31, 'S')/100,  S3:readPowerValue(buf, 34, 'S')/100,
                     U1: read3byteUInt(buf, 37)/100,        U2: read3byteUInt(buf, 40)/100,        U3:read3byteUInt(buf, 43)/100,
@@ -256,19 +286,15 @@ class Mercury234{
                         twodigits(buf.readUInt8(3)) + twodigits(buf.readUInt8(4)) };
                 break;
             case 'ACTIVEPOWER': // накопленные значения активной энергии по фазам
-                if( ! ( buf.length === 15 ) ) { return null; }
                 res = { A1: read4byteUInt(buf, 1), A2: read4byteUInt(buf, 5), A3: read4byteUInt(buf, 9) };
                 break;
             case 'REACTPOWER': // накопленные значения реактивной энергии по квадрантам
-                if( ! ( buf.length === 19 ) ) { return null; }
                 res = { R1: read4byteUInt(buf, 1), R2: read4byteUInt(buf, 5), R3: read4byteUInt(buf, 9), R4: read4byteUInt(buf, 13) };
                 break;
             case 'DAYENERGY':
-                if( ! ( buf.length === 19 ) ) { return null; }
                 res = { Aday: (buf.readUInt16LE(1)<<16) + buf.readUInt16LE(3), Rday: (buf.readUInt16LE(9)<<16) + buf.readUInt16LE(11) };
                 break;
             case 'MONTHENERGY':
-                if( ! ( buf.length === 19 ) ) { return null; }
                 res = { Amon: (buf.readUInt16LE(1)<<16) + buf.readUInt16LE(3), Rmon: (buf.readUInt16LE(9)<<16) + buf.readUInt16LE(11) };
                 break;
             case 'TIME':
@@ -277,26 +303,53 @@ class Mercury234{
             }
         return res;
         }
-}
+
+    check_buf_length(cmd,buf){
+        switch( cmd ){
+            case 'FAST': // моментальные значения: ускоренное измерение
+                if( buf.length < 89 ) return -1;
+                if( buf.length === 89 ) return 0;
+                if( buf.length < 98 ) return -1;
+                if( buf.length === 98 ) { console.log('weird mercury: ',this._runningdevice); return 0 }; // weird mercury 98 bytes instead og 89
+                if( buf.length > 98 ) return 1;
+                break;
+            case 'SERIALNUMBER':
+                return Math.sign(buf.length - 10);
+            case 'ACTIVEPOWER': // накопленные значения активной энергии по фазам
+                return Math.sign(buf.length - 15);
+            case 'REACTPOWER': // накопленные значения реактивной энергии по квадрантам
+                return Math.sign(buf.length - 19);
+            case 'DAYENERGY':
+                return Math.sign(buf.length - 19);
+            case 'MONTHENERGY':
+                return Math.sign(buf.length - 19);
+            case 'TIME':
+                return Math.sign(buf.length - 11);
+            }
+        }
+    }// class end
 
 module.exports = Mercury234;
 
-const ERROR = 0, RESPLESS2 = 1, CRCFAIL = 2, DIFFCMD = 3, RESPBAD = 4, BADSENSDATA = 5
-var myerrors = {};
-myerrors[ERROR] = 'descr';
-myerrors[RESPLESS2] = 'RECEIVED response of length < 2';
-myerrors[CRCFAIL] = 'CRC FAIL';
-myerrors[DIFFCMD] = 'Different commands';
-myerrors[RESPBAD] = 'RECEIVED BAD response';
-myerrors[BADSENSDATA] = 'Bad encoded sensor data';
-function sayError(i, str, obj) {
-    if( i < 0 || i >= myerrors.length ) return;
-    if( typeof str === "undefined" ) str = '';
-    var a = {error: myerrors[i], message: str};
-    if( typeof obj !== "undefined" ) a.data = obj;
-    return a;
-    }
 
+const eERROR = Symbol.for('ERROR'), eLENGTH = Symbol.for('LENGTH'), eCRC = Symbol.for('CRC'),
+                eDIFFCMD = Symbol.for('DIFFCMD'), eRESPONSE = Symbol.for('RESPONSE'), eDATA = Symbol.for('DATA');
+const errors_msg = {
+    [eERROR]: 'Some error', 
+    [eLENGTH]: 'RECEIVED bad length of data',
+    [eCRC]: 'CRC FAIL',
+    [eDIFFCMD]: 'Different commands',
+    [eRESPONSE]: 'RECEIVED BAD response',
+    [eDATA]: 'Bad encoded sensor data'
+    };
+function sayError(err, str, obj) {
+    return {
+        error: err, 
+        message: str ?? errors_msg[err] ?? errors_msg[eERROR],
+        data: obj
+        };
+    }
+    
 function setmonthenergy(m){
     m = Math.max(1,Math.min(m,12));
     return '053'+ m.toString(16) +'00';
@@ -309,8 +362,8 @@ function twodigits(i){
 function requestcmd(dID,cmd){
     var outHex = Buffer.from([dID]).toString('hex') + cmd;
     var crcHex = ('0000'+crc16(Buffer.from(outHex,'hex')).toString(16)).slice(-4); // crc for this command
-    var outgoingMessage = Buffer.from( outHex+crcHex.substr(2,2)+crcHex.substr(0,2),'hex' );
-    return outgoingMessage;
+    var outgoingBuffer = Buffer.from( outHex+crcHex.substr(2,2)+crcHex.substr(0,2),'hex' );
+    return outgoingBuffer;
     }
       
 function readPowerValue(data, offset, powertype) {
@@ -319,6 +372,12 @@ function readPowerValue(data, offset, powertype) {
     //      if ((data.readUInt8(offset)&0x80)!=0 && powertype=='P') { p *= -1; }
     if ((data.readUInt8(offset)&0x40)==0 && powertype=='Q') { p *= -1; }
     return p;
+    }
+
+function read_activepower_and_sign(data, offset){
+    var p = ((data.readUInt8(offset)&0x3F) << 16) + data.readUInt16LE(offset+1);
+    if ( (data.readUInt8(offset)&0x80) === 0 ) { return [p/100, 1]; }
+    return [p/100, -1];
     }
 
 // read 3-byte Int from the string starting from offset

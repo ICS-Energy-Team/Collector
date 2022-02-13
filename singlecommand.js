@@ -17,7 +17,9 @@ const merc = new Merc234(null,'SIMPLE');
 var client = new net.Socket();
 
 client.on('data', function(buf) { // not asynchronous!!
+    console.log('Send command: ' + merc.getCommand(address,cmd,cmdarg1).toString('hex'));
     console.log('Output buffer: ' + buf.toString('hex'));
+    console.log('Output buffer length: ' + buf.length);
     console.log('Output object: ');
     console.dir( merc.parseRequest(cmd,buf) );
     process.emit('SIGINT');
