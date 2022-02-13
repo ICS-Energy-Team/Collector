@@ -1,7 +1,5 @@
 'use strict';
 
-const crc16 = require('crc').crc16modbus;
-
 /*
   Meteo MPV-702 simple payload decoder.
   Use it as it is or remove the bugs :)
@@ -11,13 +9,12 @@ const crc16 = require('crc').crc16modbus;
 class MeteoMPV{
     constructor(device){
         this._version = "MeteoMonitor v. 0.9 for MPV-702";
-        this._versiondate = "07 Jun 2021";
+        this._versiondate = "05 Feb 2022";
         //this._device = device;
         this.parse = this._parseAnswer;
+        this.active = true;
         }
     
-    active() { return true; }
-
     _parseAnswer(buf){
         const datastr = buf.toString();
         //console.log(datastr);
@@ -41,14 +38,13 @@ class MeteoMPV{
                 }
             }//for
 
-        if ( Object.getOwnPropertyNames(sensordata).length === 0 )
-            return { error:'MeteoMPVparser.js Error', message:'on data listener: There is no data' };
+        if ( Object.keys(sensordata).length === 0 )
+            return { error:'MeteoMPVparser.js Error', message:'on data parse: There is no data' };
 
         return sensordata;
         }
 
 }
-
 
 function sayError(errdata) {
     if( errdata.data ) errdata.data = JSON.stringify(errdata.data, null, 2);

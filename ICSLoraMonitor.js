@@ -18,19 +18,24 @@ const CollectorName = "LoraMonitor v. 1.10";
 const CollectorVersionDate = "31 Jan 2022";
 console.log("Hello! Starting " + CollectorName + " at " + Date());
 
-const WebSocket = require('websocket').w3cwebsocket;
+const W3CWebSocket = require('websocket').w3cwebsocket;
 const Publisher = require('./ICSpublish.js');
 
 // read options
 const readConfig = require('./config.js').readConfig;
-var opts = readConfig(process.argv[2]);
+const opts = readConfig(process.argv[2]);
 
-var iot = new Publisher(opts);
+const iot = new Publisher(opts);
 
-var wsAddress = "ws://" + opts.loraserver.host + ":" + opts.loraserver.port;
-var outgoingMessage = '{ "cmd": "auth_req", "login": "root", "password": "' + opts.loraserver.password + '" }';
+const wsAddress = "ws://" + opts.loraserver.host + ":" + opts.loraserver.port;
+const outgoingMessage = '{ "cmd": "auth_req", "login": "root", "password": "' + opts.loraserver.password + '" }';
 console.log('Opening Lora Server WebSocket...');
-var socket = new WebSocket(wsAddress);
+const wsConfig = {
+    keepalive: true,
+    useNativeKeepalive: true,
+    keepaliveInterval: opts.loraserver.keepaliveInterval
+}
+const socket = new W3CWebSocket(wsAddress,undefined,undefined,undefined,undefined,wsConfig);
 //console.log(socket);
 
 socket.onopen = function() {
