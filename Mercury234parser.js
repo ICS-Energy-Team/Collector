@@ -2,8 +2,10 @@
 
 const crc16 = require('crc').crc16modbus;
 
-import { readjson } from 'config';
-import { writeFile } from 'fs/promises';
+const readjson = require('./config.js').readjson;
+//import { readjson } from 'config';
+const fs = require('fs/promises');
+//import { writeFile } from 'fs/promises';
 
 
 /*
@@ -29,7 +31,7 @@ class Mercury234{
             }
         
         this.Common = common;
-        this._datafile = common.optionsfile + '.parserdata';
+        this._datafile = './' + common.optionsfile + '.parserdata';
         this._searchdelay = common.moxa.Mercury234.searchdelay;
         this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
         this._cmdmaxtimeout = common.moxa.Mercury234.maxtimeout;
@@ -50,7 +52,7 @@ class Mercury234{
                 common.moxa.Mercury234.devices = [];
             this._i = this.MIN_DEVICE_ID - 1;
 
-            const found_devices = readjson(common.optionsfile + '.parserdata').found_devices;
+            const found_devices = readjson(this._datafile).found_devices;
             if( Array.isArray(found_devices) && (found_devices.length > 0) ){
                 this._i = this.MAX_DEVICE_ID + 1; // for end of search
                 this._devices = found_devices;
@@ -100,6 +102,7 @@ class Mercury234{
             }
             this.Common.moxa.Mercury234.devices.push(...this._devices);
             console.log("Found "+this._devices.length+" devices: "+this._devices);
+            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices},'utf8'));
             return "DELETE";
             }
         return { request: requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
@@ -149,7 +152,7 @@ class Mercury234{
                 }
             }
         if ( flag ){
-            writeFile(this._datafile,JSON.stringify(this.Common.moxa.Mercury234.devices,'utf8'));
+            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices},'utf8'));
             }
         console.log("Mercury234parser. Found " +  this._devices + " devices when in _longsearch");
         this._devices = [];
@@ -280,6 +283,11 @@ class Mercury234{
                     harmonic1: buf.readUInt16LE(79)/100,   harmonic2: buf.readUInt16LE(81)/100,   harmonic3: buf.readUInt16LE(83)/100,
                     T: buf.readUInt16LE(85)/100
                     };
+                if ( buf.length == 98 ){
+                    res['U12'] = read3byteUInt(buf, 87) / 100 ;
+                    res['U23'] = read3byteUInt(buf, 90) / 100 ;
+                    res['U13'] = read3byteUInt(buf, 93) / 100 ;
+                    }
                 break;
             case 'SERIALNUMBER':
                 res = { SN: twodigits(buf.readUInt8(1)) + twodigits(buf.readUInt8(2)) + 

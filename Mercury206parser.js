@@ -50,7 +50,7 @@ class Mercury206{
         }
     _parseAnswer(buf){
         var dID = buf.readUInt32BE(0);
-        if( buf.length < 5 ) return sayError(RESPLESS5,'Mercury206parser',buf);
+        if( buf.length < 5 ) return sayError(eLENGTH,'Mercury206parser',buf);
         var cmd = buf.readUInt8(4);
         if ( this._parsers.hasOwnProperty(cmd) )
             return {
@@ -59,7 +59,7 @@ class Mercury206{
                 timeout: this._moxa.Mercury206.timeout
                 };
         else
-            return sayError(BADCOMMAND,'Mercury206parser',buf);
+            return sayError(eCMD,'Mercury206parser',buf);
         }
     _parseVCP(buf){
         /* // variant 1
@@ -90,19 +90,19 @@ class Mercury206{
         }
 }
 
-const RESPLESS5 = 0;
-const BADCOMMAND = 1;
-var myerrors = {};
-myerrors[RESPLESS5] = 'RECEIVED response of length < 5';
-myerrors[BADCOMMAND] = 'RECEIVED unknown command';
-
-function sayError(i, str, obj) {
-    if( i < 0 || i >= myerrors.length ) return;
-    if( typeof str === "undefined" ) str = '';
-    var a = {error: myerrors[i], message: str};
-    if( typeof obj !== "undefined" ) a.data = obj;
-    return a;
-    }    
+const eERROR = Symbol.for('ERROR'), eLENGTH = Symbol.for('LENGTH'), eCMD = Symbol.for('CMD');
+const errors_msg = {
+    [eERROR]: 'Some error', 
+    [eLENGTH]: 'RECEIVED bad length of data',
+    [eCMD]: 'RECEIVED unknown command'
+    };
+function sayError(err, str, obj) {
+    return {
+        error: err, 
+        message: str ?? errors_msg[err] ?? errors_msg[eERROR],
+        data: obj
+        };
+    }
 
 module.exports = Mercury206;
 

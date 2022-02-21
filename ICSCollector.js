@@ -24,7 +24,8 @@ const Publisher = require('./ICSpublish.js');
 // read options
 /*const readConfig = require('./config.js').readConfig;
 const readjson = */
-import { readConfig } from 'config';
+//import { readConfig } from 'config';
+const readConfig = require('./config.js').readConfig;
 
 const opts = readConfig(process.argv[2]);
 
@@ -142,6 +143,7 @@ async function stateClient(newevent) {
             dataJob.cancel();
             setState(ClientStates.NOT_CONNECTED);
             setImmediate(stateClient);
+            clearTimeout(timer);
             busy = false;
             return;
             }
@@ -189,6 +191,7 @@ async function stateClient(newevent) {
             break;
           default:
             // send request to socket
+            clearTimeout(timer);
             timer = setTimeout(stateClient,request.timeout);
             startmoment = +new Date();
             client.write(request.request);
@@ -251,7 +254,7 @@ function on_socket_data(buf) {
         }
     if ( Number.isInteger(data.timeout) ){
         clearTimeout(timer);
-        timer = setTimeout(stateClient,Math.max(0,data.timeout - time));
+        timer = setTimeout(stateClient,data.timeout - time); // delay less 1 will be setted 1
         }
     if ( data.devEui ) {
         const datatosend = {
@@ -278,7 +281,7 @@ function on_socket_end(){
     console.log('Other side send FIN packet' + _moscowdate.format(+new Date()) );
     stateJob.cancel();
     clearTimeout(timer);
-    timer = setTimeout(stateClient,ClientEvents.LOST_CONNECTION);
+    timer = setTimeout(stateClient,0,ClientEvents.LOST_CONNECTION);
     };//);
 //client.on('error', function(err) {
 function on_socket_error(err){

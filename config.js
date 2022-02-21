@@ -4,14 +4,16 @@ exports.readjson = readjson;
 
 require('json5/lib/register');
 
+const fs = require('fs');
 function readjson(filename){
     var r = {}
     if( ! filename ) return r;
     try {
-        fs.accessSync(filename, constants.R_OK);
-        r = JSON.parse(fs.readFileSync('./'+filename, 'utf8'))
+        fs.accessSync(filename, fs.constants.R_OK);
+        r = JSON.parse(fs.readFileSync(filename, 'utf8'));
         }
     catch (err) {
+        console.log(err);
         console.log('config.js:readjson no or bad jsonfile');
         }
     return r;
