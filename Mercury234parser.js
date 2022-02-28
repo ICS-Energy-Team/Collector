@@ -103,7 +103,7 @@ class Mercury234{
             this.Common.moxa.Mercury234.devices.push(...this._devices);
             console.log("Found "+this._devices.length+" devices: "+this._devices);
             fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices},'utf8'));
-            return "DELETE";
+            return "SEARCH_END";
             }
         return { request: requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
         }

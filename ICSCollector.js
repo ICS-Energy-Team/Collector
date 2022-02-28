@@ -71,6 +71,7 @@ function setState(newstate) {
     clientState = newstate;
     }
 var clientState = ClientStates.SLEEP, stateChanged = false;
+var search_end = false;
 
 const ClientEvents = {
     CONNECT_SUCCESS: 1001,
@@ -159,10 +160,10 @@ async function stateClient(newevent) {
             // запрос данных каждые opts.moxa.datainterval мс
             if( stateChanged ) {
                 stateChanged = false;
-                setTimeout(()=>{
+                if ( search_end ){
                     dataJob = schedule.scheduleJob( `*/${Common.moxa.datainterval} * * * * *`, 
-                        stateClient.bind(null, ClientEvents.DEVICES_START_REQUEST) )},
-                    25000); // wait for search
+                        stateClient.bind(null, ClientEvents.DEVICES_START_REQUEST) );
+                    }
                 }
             }
         if ( curmechanism === null )
@@ -175,6 +176,11 @@ async function stateClient(newevent) {
             console.log( "Collector: Some mechanism send EXIT, I quit." );
             process.emit('SIGTERM');
             break;
+          case "SEARCH_END":
+            search_end = true;
+            dataJob = schedule.scheduleJob( `*/${Common.moxa.datainterval} * * * * *`, 
+                        stateClient.bind(null, ClientEvents.DEVICES_START_REQUEST) );
+            // no break - go to "DELETE" case
           case "DELETE":
             mechanisms.splice(imech,1); imech -= 1;
             curmechanism = null; 
