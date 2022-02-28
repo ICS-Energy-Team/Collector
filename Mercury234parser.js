@@ -50,13 +50,13 @@ class Mercury234{
             this._devices = [];
             if (typeof common.moxa.Mercury234.devices === 'undefined')
                 common.moxa.Mercury234.devices = [];
-            this._i = this.MIN_DEVICE_ID - 1;
+            this._i = -1;
 
-            const found_devices = readjson(this._datafile).found_devices;
+            const { found_devices } = readjson(this._datafile);
             if( Array.isArray(found_devices) && (found_devices.length > 0) ){
-                this._i = this.MAX_DEVICE_ID + 1; // for end of search
-                this._devices = found_devices;
+                this._array_tosearch = found_devices;
                 }
+            else { this._array_tosearch = Array.from({length: this.MAX_DEVICE_ID-this.MIN_DEVICE_ID+1}, (_, i) => i + 1); }
             }
         else if ( mode == 'COLLECT' ) {
             this._runningcmd = 'FAST';
@@ -69,7 +69,7 @@ class Mercury234{
             this.request = this._longsearch;
             this.parse = this._parseSearch;
             this._devices = [];
-            this._i = this.MIN_DEVICE_ID - 1;
+            this._i = -1;
             this._tick = false;
             }
         else if ( this._EnergyModes.has(mode) ) {
@@ -91,10 +91,10 @@ class Mercury234{
         }// constructor
 
     _search(){
-        if( this._i == 0 ) console.log("START SEARCH")
+        if( this._i == -1 ) console.log("START SEARCH");
         this._i += 1;
-        if( this._i > this.MAX_DEVICE_ID ){
-            this._i = this.MIN_DEVICE_ID - 1;
+        if( this._i >= this._array_tosearch.length ){
+            this._i = -1;
             this._devices = [...new Set(this._devices)]; // get only unique IDs
             if( this._devices.length === 0 ) {
                 console.log( "I haven't found any devices. I have to halt collector due to config" );
@@ -105,7 +105,7 @@ class Mercury234{
             fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices},'utf8'));
             return "SEARCH_END";
             }
-        return { request: requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
+        return { request: requestcmd(this._array_tosearch[this._i],this._commands['ADMIN']), timeout: this._searchdelay };
         }
 
     _request(){
