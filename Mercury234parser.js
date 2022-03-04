@@ -318,7 +318,7 @@ class Mercury234{
                 if( buf.length < 89 ) return -1;
                 if( buf.length === 89 ) return 0;
                 if( buf.length < 98 ) return -1;
-                if( buf.length === 98 ) { console.log('weird mercury: ',this._runningdevice); return 0 }; // weird mercury 98 bytes instead og 89
+                if( buf.length === 98 ) return 0; // 98 bytes instead of 89: +linear voltage on 3 phases
                 if( buf.length > 98 ) return 1;
                 break;
             case 'SERIALNUMBER':

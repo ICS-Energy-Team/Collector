@@ -278,6 +278,7 @@ function on_socket_data(buf) {
 //client.on('close', function() {
 function on_socket_close(){
     console.log('Connection closed ' + _moscowdate.format(+new Date()) );
+    client.destroy();
     stateJob.cancel();
     clearTimeout(timer);
     timer = setTimeout(stateClient,0,ClientEvents.LOST_CONNECTION);
@@ -285,6 +286,7 @@ function on_socket_close(){
 //client.on('end', function(){
 function on_socket_end(){
     console.log('Other side send FIN packet' + _moscowdate.format(+new Date()) );
+    client.destroy();
     stateJob.cancel();
     clearTimeout(timer);
     timer = setTimeout(stateClient,0,ClientEvents.LOST_CONNECTION);
