@@ -260,7 +260,7 @@ function on_socket_data(buf) {
         }
     if ( Number.isInteger(data.timeout) ){
         clearTimeout(timer);
-        timer = setTimeout(stateClient,data.timeout - time); // delay less 1 will be setted 1
+        timer = setTimeout(stateClient,data.timeout - time); // delay less 1 will be setted to 1
         }
     if ( data.devEui ) {
         const datatosend = {

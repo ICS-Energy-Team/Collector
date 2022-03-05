@@ -56,7 +56,7 @@ class Mercury234{
             if( Array.isArray(found_devices) && (found_devices.length > 0) ){
                 this._array_tosearch = found_devices;
                 }
-            else { this._array_tosearch = Array.from({length: this.MAX_DEVICE_ID-this.MIN_DEVICE_ID+1}, (_, i) => i + 1); }
+            else { this._array_tosearch = Array.from({length: this.MAX_DEVICE_ID-this.MIN_DEVICE_ID+1}, (_, i) => i + this.MIN_DEVICE_ID); }
             }
         else if ( mode == 'COLLECT' ) {
             this._runningcmd = 'FAST';
@@ -154,7 +154,10 @@ class Mercury234{
         if ( flag ){
             fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices},'utf8'));
             }
-        console.log("Mercury234parser. Found " +  this._devices + " devices when in _longsearch");
+        if ( this._devices.length > 0 )
+            console.log("Mercury234parser. Found " +  JSON.stringify(this._devices) + " devices when in _longsearch");
+        else
+            console.log("Mercury234parser. Not found device with ID=" +  this._i + " when in _longsearch");
         this._devices = [];
         this._tick = false;
         }
@@ -199,9 +202,9 @@ class Mercury234{
 
     _parseSearch(buf){
         if( buf.length < 4 )
-            return sayError(eLENGTH,undefined,{cmp:-1, buflen: buf.length, buf: buf.toString('hex')});
+            return sayError(eLENGTH,undefined,{cmp:-1, buflen: buf.length, buf: buf.toString('hex'), where: 'Mercury234parser._parseSearch'});
         if( buf.length > 4 )
-            return sayError(eLENGTH,undefined,{cmp:1, buflen: buf.length, buf: buf.toString('hex')});
+            return sayError(eLENGTH,'undefined',{cmp:1, buflen: buf.length, buf: buf.toString('hex'), where: 'Mercury234parser._parseSearch'});
 
         var dID = buf.readUInt8(0);
 
