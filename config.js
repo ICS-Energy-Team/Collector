@@ -13,8 +13,8 @@ function readjson(filename){
         r = JSON.parse(fs.readFileSync(filename, 'utf8'));
         }
     catch (err) {
-        console.log(err);
-        console.log('config.js:readjson no or bad jsonfile');
+        //console.log(err);
+        console.log('config.js/readjson: no or bad jsonfile, return r='+r);
         }
     return r;
     }

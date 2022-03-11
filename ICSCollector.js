@@ -117,19 +117,21 @@ async function waiters_try(){
 
 setState(ClientStates.NOT_CONNECTED);
 // Let's go!
-stateJob = schedule.scheduleJob('*/2 * * * * *', stateClient);
+stateJob = schedule.scheduleJob('*/3 * * * * *', stateClient);
 
 async function stateClient(newevent) {
-
     switch (clientState) {
     case ClientStates.NOT_CONNECTED :
-        if( newevent == ClientEvents.CONNECT_SUCCESS ) {
+        if( newevent === ClientEvents.CONNECT_SUCCESS ) {
             stateJob.cancel();
             setState(ClientStates.DATA_COLLECTION);
             setImmediate(stateClient);//stateInterval = setInterval(stateClientMOXA,10);
             return
             }
-        if( stateChanged ){
+        if( newevent === ClientEvents.LOST_CONNECTION )
+            {}
+        if( stateChanged )
+            {
             stateChanged = false;
             stateJob.cancel();
             stateJob = schedule.scheduleJob(`*/${Common.moxa.connecttimeout} * * * * *`, stateClient); /*each connecttimeout sec try to connect*/
@@ -137,8 +139,7 @@ async function stateClient(newevent) {
         [client,bigbuffer] = connect(client);
         break;
     case ClientStates.DATA_COLLECTION :
-        stateJob.cancel();
-        if( newevent == ClientEvents.LOST_CONNECTION )
+        if( newevent === ClientEvents.LOST_CONNECTION )
             {
             sayLog({msg: 'LOST CONNECTION', where:'stateClient, state=DATA_COLLECTION'});
             dataJob.cancel();
@@ -209,7 +210,7 @@ async function stateClient(newevent) {
 }// stateClientMOXA
 
 function connect(oldclient){
-    if ( oldclient !== null && oldclient.connecting ) oldclient.destroy();
+    if ( oldclient !== null /*&& oldclient.connecting*/ ) oldclient.destroy();
     
     var client = net.createConnection(opts.moxa.port, opts.moxa.host, function() {
         console.log('CONNECTED TO: '+ opts.moxa.host + ':' + opts.moxa.port);
@@ -279,7 +280,6 @@ function on_socket_data(buf) {
 function on_socket_close(){
     console.log('Connection closed ' + _moscowdate.format(+new Date()) );
     client.destroy();
-    stateJob.cancel();
     clearTimeout(timer);
     timer = setTimeout(stateClient,0,ClientEvents.LOST_CONNECTION);
     };//);
@@ -287,7 +287,6 @@ function on_socket_close(){
 function on_socket_end(){
     console.log('Other side send FIN packet' + _moscowdate.format(+new Date()) );
     client.destroy();
-    stateJob.cancel();
     clearTimeout(timer);
     timer = setTimeout(stateClient,0,ClientEvents.LOST_CONNECTION);
     };//);
