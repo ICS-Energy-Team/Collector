@@ -277,16 +277,16 @@ function on_socket_data(buf) {
 
 // Add a 'close' event handler for the client socket
 //client.on('close', function() {
-function on_socket_close(){
-    console.log('Connection closed ' + _moscowdate.format(+new Date()) );
-    client.destroy();
+function on_socket_close(hadError){
+    console.log('Connection closed ' + _moscowdate.format(+new Date()) + (hadError?'. Due to transmission error':'.') );
+    //client.destroy();
     clearTimeout(timer);
     timer = setTimeout(stateClient,0,ClientEvents.LOST_CONNECTION);
     };//);
 //client.on('end', function(){
 function on_socket_end(){
     console.log('Other side send FIN packet' + _moscowdate.format(+new Date()) );
-    client.destroy();
+    //client.end(); // we also send FIN packet - by default
     clearTimeout(timer);
     timer = setTimeout(stateClient,0,ClientEvents.LOST_CONNECTION);
     };//);
