@@ -14,7 +14,7 @@ function readjson(filename){
         }
     catch (err) {
         //console.log(err);
-        console.log('config.js/readjson: no or bad jsonfile, return r='+r);
+        console.log(`config.js/readjson: no or bad jsonfile "${filename}", return r=${JSON.stringify(r)}`);
         }
     return r;
     }
