@@ -22,10 +22,12 @@ const opts = readConfig(process.argv[2]);
 const TheDevice = opts[opts.device.name];
 var TheDeviceClass, devicemessage; //opts.meteo.find( (el) => { return el.model == "MPV-702"; });
 if( TheDevice.model === "MPV-702" ){
-    TheDeviceClass = new MeteoMPV(TheDevice);
+    let MC = require('./MeteoMPVparser.js').MeteoMPV;
+    TheDeviceClass = new MC(TheDevice);
     }
 else if( TheDevice.model === "SOKOL-M1" ){
-    TheDeviceClass = new MeteoSokol(TheDevice);
+    let MC = require('./MeteoSokolparser.js').MeteoSokol;
+    TheDeviceClass = new MC(TheDevice);
     }
 else{ 
     console.log('unknown device model');

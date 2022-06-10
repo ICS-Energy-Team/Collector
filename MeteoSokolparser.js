@@ -25,7 +25,7 @@ class MeteoSokol{
     _parseAnswer(buf){
         var info = {};
         try{
-        for ( i = 9 ; i < buf.length ; i++ ) {
+        for ( let i = 9 ; i < buf.length ; i++ ) {
             switch (i) {
                 case 0: // device address
                 case 1: // command code
@@ -64,8 +64,8 @@ class MeteoSokol{
             }
         }}
         catch(e){
-            console.err('Error in MeteoSokolparser._parseAnswer while parsing data from SOKOL meteostation');
-            console.err(e);
+            console.error('Error in MeteoSokolparser._parseAnswer while parsing data from SOKOL meteostation');
+            console.error(e);
             }
         return info;
         }

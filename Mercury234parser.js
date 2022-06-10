@@ -56,7 +56,9 @@ class Mercury234{
             if( Array.isArray(found_devices) && (found_devices.length > 0) ){
                 this._array_tosearch = found_devices;
                 }
-            else { this._array_tosearch = Array.from({length: this.MAX_DEVICE_ID-this.MIN_DEVICE_ID+1}, (_, i) => i + this.MIN_DEVICE_ID); }
+            else { 
+                let min = this.MIN_DEVICE_ID, max = this.MAX_DEVICE_ID;
+                this._array_tosearch = Array.from({length: max-min+1}, (_, i) => i + min); }
             }
         else if ( mode == 'COLLECT' ) {
             this._runningcmd = 'FAST';
@@ -69,7 +71,7 @@ class Mercury234{
             this.request = this._longsearch;
             this.parse = this._parseSearch;
             this._devices = [];
-            this._i = -1;
+            this._i = this.MIN_DEVICE_ID-1;
             this._tick = false;
             }
         else if ( this._EnergyModes.has(mode) ) {

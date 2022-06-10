@@ -142,7 +142,7 @@ async function stateClient(newevent) {
         if( newevent === ClientEvents.LOST_CONNECTION )
             {
             sayLog({msg: 'LOST CONNECTION', where:'stateClient, state=DATA_COLLECTION'});
-            dataJob.cancel();
+            if (dataJob) dataJob.cancel();
             setState(ClientStates.NOT_CONNECTED);
             setImmediate(stateClient);
             clearTimeout(timer);

@@ -57,7 +57,7 @@
       "compress": "gzip" // compress rotated files
     },
     {
-      "host": "193.232.208.41",
+      "host": "tb.ipu.ru",
       "port": "1883",
       "protocol": "mqtt",
       "maxSilenceTime": 60000,
