@@ -53,15 +53,23 @@ socket.onmessage = function(event) {
     var msg = JSON.parse(event.data);
     if ((msg.type == "UNCONF_UP") || (msg.type == "CONF_UP")) {
         //console.log("Got: "+msg.data+' from '+msg.devEui+', type='+msg.type);
-        if (isElsys(msg.devEui)) {
-            var sensordata = DecodeElsysPayload(hexToBytes(msg.data));
-            }
-        else {
-            var sensordata = DecodeVegaTD11Payload(Buffer.from(msg.data,'hex'));
-            };
+        switch (getType(msg.devEui)) {
+            case 'Elsys':
+                var sensordata = DecodeElsysPayload(hexToBytes(msg.data));
+                break;
+            case 'VegaTD11':
+                var sensordata = DecodeVegaTD11Payload(Buffer.from(msg.data,'hex'));
+                break;
+            case 'VegaSmartUM':
+                var sensordata = DecodeVegaSmartUM(Buffer.from(msg.data,'hex'));
+                break;
+            case 'what?':
+                doError({error:"ERROR", message:"ICSLoraMonitor.js: I dunno type of that devEUI"});
+                break;
+        }
 
         if ( sensordata === null ) {
-            doError(eRESPONSE, 'decoder return null', {buffer:event.data, data:msg });
+            doError(eRESPONSE, 'decoder return null', {buffer:event.data, data:msg});
             return;
             }
         if ( sensordata.error ) {
@@ -112,13 +120,20 @@ const TYPE_PULSE2_ABS = 0x17; //4bytes no 0->0xFFFFFFFF
 const TYPE_ANALOG2 = 0x18; //2bytes voltage in mV
 const TYPE_EXT_TEMP2 = 0x19; //2bytes -3276.5C-->3276.5C
 
-function isElsys(devEui) {
+function getType(devEui) {
     if (devEui[0] == "A") {
-        return true;
-    } else {
-        return false;
-    };
-};
+        return 'Elsys';
+        } 
+    else if (devEui.substring(0,2) == '37') {
+        return 'VegaTD11';
+        } 
+    else if ( devEui.substring(0,2) == '38' ){
+        return 'VegaSmartUM';
+        } 
+    else {
+        return 'what?'
+        }
+    }
 
 function bin16dec(bin) {
     var num = bin & 0xFFFF;
@@ -340,6 +355,28 @@ function DecodeVegaTD11Payload(buf) {
     return ret;
     };
 
+const VegaSmartUM_types = ['','normal','co2_out',
+                    'illumination_out','accelerometer','humidity_out',
+                    'temperature_out','noise_out','removing_fact'];
+function DecodeVegaSmartUM(buf) {
+    if( buf.length < 13 ) return sayError(eLENGTH,'buffer.length < 13', {bufer:buf.toString('hex')});
+    var obj = {
+        type: VegaSmartUM_types[buf.readUInt8(0)],
+        charge: buf.readUInt8(1),
+        timestamp: buf.readUInt32LE(2),
+        powerstate: buf.readUInt8(6),
+        temperature: buf.readInt16LE(7) / 10,
+        humidity: buf.readUInt8(9),
+        illumination: buf.readUInt16LE(10),
+        noise: buf.readUInt8(12),
+        co2: buf.readUInt16LE(13),
+        anglevertical: readUInt8(15)
+        };
+    var ret = {ts: obj.timestamp*1000, values: obj};
+    //console.log('VegaSmartUM says: '+ JSON.stringify(ret));
+    return ret;
+    };
+    
 // LoRa
 
 
