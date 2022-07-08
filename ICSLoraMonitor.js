@@ -370,7 +370,7 @@ function DecodeVegaSmartUM(buf) {
         illumination: buf.readUInt16LE(10),
         noise: buf.readUInt8(12),
         co2: buf.readUInt16LE(13),
-        anglevertical: readUInt8(15)
+        anglevertical: buf.readUInt8(15)
         };
     var ret = {ts: obj.timestamp*1000, values: obj};
     //console.log('VegaSmartUM says: '+ JSON.stringify(ret));
