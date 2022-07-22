@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 const crc16 = require('crc').crc16modbus;
@@ -23,7 +24,8 @@ class Mercury234{
         // REACTPOWER - накопленные значения реактивной энергии по квадрантам
         // DAYENERGY - total day active and reactive energy up to the current time
         this._commands = {'FAST': '0816A0', 'ACTIVEPOWER': '056000', 'REACTPOWER':'150000', 'ADMIN':'0102020202020202',
-                        'SERIALNUMBER': '0800', 'DAYENERGY':'054000', 'MONTHENERGY': '053100', 'TIME': '0400'
+                        'SERIALNUMBER': '0800', 'DAYENERGY':'054000', 'MONTHENERGY': '053100', 'TIME': '0400', 
+                        'READ_TRANSFORM_COEFF':'0802','SET_TRANSFORM_COEFF':'031B'
                         };        //'081411', '056000', '156000': U, Pcumul, Qcumul,
         if ( mode == 'SIMPLE' ) {
             //this._twodigits = new Intl.NumberFormat('en-US',{minimumIntegerDigits:2})
@@ -104,7 +106,7 @@ class Mercury234{
             }
             this.Common.moxa.Mercury234.devices.push(...this._devices);
             console.log("Found "+this._devices.length+" devices: "+this._devices);
-            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices},'utf8'));
+            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices}),'utf8');
             return "SEARCH_END";
             }
         return { request: requestcmd(this._array_tosearch[this._i],this._commands['ADMIN']), timeout: this._searchdelay };
@@ -154,7 +156,7 @@ class Mercury234{
                 }
             }
         if ( flag ){
-            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices},'utf8'));
+            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices}),'utf8');
             }
         if ( this._devices.length > 0 )
             console.log("Mercury234parser. Found " +  JSON.stringify(this._devices) + " devices when in _longsearch");
@@ -313,6 +315,9 @@ class Mercury234{
             case 'TIME':
                 res = { Time: buf.toString('hex',3,4)+':'+buf.toString('hex',2,3)+':'+buf.toString('hex',1,2)+' '+buf.toString('hex',5,6)+'/'+buf.toString('hex',6,7)+'/'+buf.toString('hex',7,8)};
                 break;
+            case 'READ_TRANSFORM_COEFF':
+                res = { coeff_voltage: buf.readUInt16BE(1), coeff_current: buf.readUInt16BE(3) };
+                break;
             }
         return res;
         }
@@ -338,6 +343,10 @@ class Mercury234{
                 return Math.sign(buf.length - 19);
             case 'TIME':
                 return Math.sign(buf.length - 11);
+            case 'READ_TRANSFORM_COEFF':
+                return Math.sign(buf.length - 7);
+            case 'SET_TRANSFORM_COEFF':
+                return Math.sign(buf.length - 4);
             }
         }
     }// class end
