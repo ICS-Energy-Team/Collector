@@ -27,6 +27,12 @@ function connect(){
     if ( client.connecting ) client.destroy();
     client.connect(args.port, args.host, function() {
         console.log('CONNECTED TO: '+ args.host + ':' + args.port);
+        if( args.ids ){
+            for( const i = 0 ; i < ids.length; i+=1 ){
+                args.id = ids[i];
+                setTimeout(()=>{client.write(merc.getCommand(args));}, 300*i);
+            }
+        }
         client.write(merc.getCommand(args));
       });
     }

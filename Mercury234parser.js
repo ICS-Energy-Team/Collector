@@ -25,7 +25,7 @@ class Mercury234{
         // DAYENERGY - total day active and reactive energy up to the current time
         this._commands = {'FAST': '0816A0', 'ACTIVEPOWER': '056000', 'REACTPOWER':'150000', 'ADMIN':'0102020202020202',
                         'SERIALNUMBER': '0800', 'DAYENERGY':'054000', 'MONTHENERGY': '053100', 'TIME': '0400', 
-                        'READ_TRANSFORM_COEFF':'0802','SET_TRANSFORM_COEFF':'031B'
+                        'GET_TRANSFORM_COEFF':'0802','SET_TRANSFORM_COEFF':'031B'
                         };        //'081411', '056000', '156000': U, Pcumul, Qcumul,
         if ( mode == 'SIMPLE' ) {
             //this._twodigits = new Intl.NumberFormat('en-US',{minimumIntegerDigits:2})
