@@ -322,7 +322,7 @@ class Mercury234{
             case 'TIME':
                 res = { Time: buf.toString('hex',3,4)+':'+buf.toString('hex',2,3)+':'+buf.toString('hex',1,2)+' '+buf.toString('hex',5,6)+'/'+buf.toString('hex',6,7)+'/'+buf.toString('hex',7,8)};
                 break;
-            case 'READ_TRANSFORM_COEFF':
+            case 'GET_TRANSFORM_COEFF':
                 res = { coeff_voltage: buf.readUInt16BE(1), coeff_current: buf.readUInt16BE(3) };
                 break;
             }
@@ -350,7 +350,7 @@ class Mercury234{
                 return Math.sign(buf.length - 19);
             case 'TIME':
                 return Math.sign(buf.length - 11);
-            case 'READ_TRANSFORM_COEFF':
+            case 'GET_TRANSFORM_COEFF':
                 return Math.sign(buf.length - 7);
             case 'SET_TRANSFORM_COEFF':
                 return Math.sign(buf.length - 4);
