@@ -264,10 +264,17 @@ class Mercury234{
         return data;
         }// parseAnswer
 
-    getCommand(id, cmd, arg){
-        if ( cmd == 'MONTHENERGY')
-            this._commands['MONTHENERGY'] = setmonthenergy(arg);
-        return requestcmd(id, this._commands[cmd]);
+    getCommand(args){
+        let fullcmd = this._commands[args.cmd];
+        if ( args.cmd == 'MONTHENERGY' )
+            fullcmd = setmonthenergy(args.month);
+        if ( args.cmd == 'SET_TRANSFORM_COEFF' ) {
+            let t = Buffer.from([0,1,0,1]);
+            t.writeUInt16BE(args.coeff_voltage || 1,0);
+            t.writeUInt16BE(args.coeff_current || 1,2);
+            fullcmd += t.toString('hex');
+            }
+        return requestcmd(args.id, fullcmd);
         }
 
     parseRequest(cmd,buf){

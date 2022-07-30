@@ -1,12 +1,10 @@
 'use strict';
+require('json5/lib/register');
 const net = require('net');
 
-var host = process.argv[2];
-var port = process.argv[3];
-var address = process.argv[4];
-var cmd = process.argv[5];
-var cmdarg1 = parseInt(process.argv[6]);
-if( isNaN(cmdarg1) ) cmdarg1 = 0;
+let args = require('./'+process.argv[2]);
+
+if( isNaN(args.cmdarg1) ) args.cmdarg1 = 0;
 
 // node singlecommand.js 10.101.0.50 4002 45 MONTHENERGY 1 - энергия за январь со счётчика №45 по адресу 10.101.0.50:4002
 
@@ -17,19 +15,19 @@ const merc = new Merc234(null,'SIMPLE');
 var client = new net.Socket();
 
 client.on('data', function(buf) { // not asynchronous!!
-    console.log('Send command: ' + merc.getCommand(address,cmd,cmdarg1).toString('hex'));
+    console.log('Send command: ' + merc.getCommand(args).toString('hex'));
     console.log('Output buffer: ' + buf.toString('hex'));
     console.log('Output buffer length: ' + buf.length);
     console.log('Output object: ');
-    console.dir( merc.parseRequest(cmd,buf) );
+    console.dir( merc.parseRequest(args.cmd,buf) );
     process.emit('SIGINT');
     });
 
 function connect(){
     if ( client.connecting ) client.destroy();
-    client.connect(port, host, function() {
-        console.log('CONNECTED TO: '+ host + ':' + port);
-        client.write(merc.getCommand(address,cmd,cmdarg1));
+    client.connect(args.port, args.host, function() {
+        console.log('CONNECTED TO: '+ args.host + ':' + args.port);
+        client.write(merc.getCommand(args));
       });
     }
 
