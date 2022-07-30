@@ -20,7 +20,7 @@ client.on('data', function(buf) { // not asynchronous!!
     console.log('Output buffer length: ' + buf.length);
     console.log('Output object: ');
     console.dir( merc.parseRequest(args.cmd,buf) );
-    process.emit('SIGINT');
+    //process.emit('SIGINT');
     });
 
 function connect(){
@@ -31,10 +31,12 @@ function connect(){
             for( let i = 0 ; i < args.ids.length; i+=1 ){
                 args.id = args.ids[i];
                 setTimeout(()=>{client.write(merc.getCommand(args));}, 300*i);
+                }
+            } 
+        else {
+            client.write(merc.getCommand(args));
             }
-        }
-        client.write(merc.getCommand(args));
-      });
+        });
     }
 
 process.on('SIGINT',()=>{
