@@ -28,9 +28,10 @@ function connect(){
     client.connect(args.port, args.host, function() {
         console.log('CONNECTED TO: '+ args.host + ':' + args.port);
         if( args.ids ){
-            for( let i = 0 ; i < args.ids.length; i+=1 ){
-                args.id = args.ids[i];
-                setTimeout(()=>{client.write(merc.getCommand(args));}, 300*i);
+            for( let i = 0 ; i < args.ids.length ; i+=1 ){
+                let loc_args = {...args};
+                loc_args.id = args.ids[i];
+                setTimeout( ()=>{client.write(merc.getCommand(loc_args));}, 300*i );
                 }
             } 
         else {
