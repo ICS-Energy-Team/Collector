@@ -9,25 +9,29 @@ if( isNaN(args.cmdarg1) ) args.cmdarg1 = 0;
 // node singlecommand.js 10.101.0.50 4002 45 MONTHENERGY 1 - энергия за январь со счётчика №45 по адресу 10.101.0.50:4002
 
 const Merc234 = require('./Mercury234parser');
-const merc = new Merc234(process.argv[3] || null,'SIMPLE');
-
+let moxaconfig = null;
+if( process.argv[3] ){
+    moxaconfig = require('./'+process.argv[3]);
+    }
+const merc = new Merc234(moxaconfig,'SIMPLE');
+merc._devices = [];
 
 var client = new net.Socket();
 
 client.on('data', function(buf) { // not asynchronous!!
     if ( curr_state == 1 ){
-        let r = Merc234._parseSearch(buf);
+        let r = merc._parseSearch(buf);
         console.dir( r );
         if( r.error )
             return;
         curr_state = 2;
-        setTimeout(func2(curr_id),30);
+        setTimeout(()=>func2(curr_id),30);
         }
     else {
         curr_state = 1;
         curr_id += 1;
-        Merc234._runningcmd = args.cmd;
-        let r = Merc234._parseAnswer(buf);
+        merc._runningcmd = args.cmd;
+        let r = merc._parseAnswer(buf);
         console.dir( r );
         }
     // console.log('Send command: ' + merc.getCommand(args).toString('hex'));
