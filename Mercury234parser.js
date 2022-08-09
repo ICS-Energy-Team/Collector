@@ -27,12 +27,17 @@ class Mercury234{
                         'SERIALNUMBER': '0800', 'DAYENERGY':'054000', 'MONTHENERGY': '053100', 'TIME': '0400', 
                         'GET_TRANSFORM_COEFF':'0802','SET_TRANSFORM_COEFF':'031B'
                         };        //'081411', '056000', '156000': U, Pcumul, Qcumul,
+        if(common){
+            this.Common = common;
+            this._searchdelay = common.moxa.Mercury234.searchdelay;
+            this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
+            this._cmdmaxtimeout = common.moxa.Mercury234.maxtimeout;    
+        }
         if ( mode == 'SIMPLE' ) {
             //this._twodigits = new Intl.NumberFormat('en-US',{minimumIntegerDigits:2})
             return;
             }
         
-        this.Common = common;
         this._datafile = './' + common.optionsfile + '.parserdata';
         this._searchdelay = common.moxa.Mercury234.searchdelay;
         this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
@@ -60,7 +65,8 @@ class Mercury234{
                 }
             else { 
                 let min = this.MIN_DEVICE_ID, max = this.MAX_DEVICE_ID;
-                this._array_tosearch = Array.from({length: max-min+1}, (_, i) => i + min); }
+                this._array_tosearch = Array.from({length: max-min+1}, (_, i) => i + min); 
+                }
             }
         else if ( mode == 'COLLECT' ) {
             this._runningcmd = 'FAST';
