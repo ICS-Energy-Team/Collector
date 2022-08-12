@@ -128,8 +128,9 @@ async function stateClient(newevent) {
             setImmediate(stateClient);//stateInterval = setInterval(stateClientMOXA,10);
             return
             }
-        if( newevent === ClientEvents.LOST_CONNECTION )
-            {}
+        if( newevent === ClientEvents.LOST_CONNECTION ){
+            return; // stateJob will run next connection try
+            }
         if( stateChanged )
             {
             stateChanged = false;
