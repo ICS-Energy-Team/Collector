@@ -359,6 +359,12 @@ const VegaSmartUM_types = ['','normal','co2_out',
                     'illumination_out','accelerometer','humidity_out',
                     'temperature_out','noise_out','removing_fact'];
 function DecodeVegaSmartUM(buf) {
+    let type = buf.readUInt8(0);
+    if ( type == 255 )
+        return sayError(eERROR,'Smart UM request time corrections',{bufer:buf.toString('hex')});
+    if ( type == 0 )
+        return sayError(eERROR,'Smart UM send settings',{bufer:buf.toString('hex')});
+
     if( buf.length < 13 ) return sayError(eLENGTH,'buffer.length < 13', {bufer:buf.toString('hex')});
     var obj = {
         type: VegaSmartUM_types[buf.readUInt8(0)],
