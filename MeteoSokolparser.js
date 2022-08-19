@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 const crc16 = require('crc').crc16modbus;
@@ -22,6 +23,9 @@ class MeteoSokol{
     _request(){
         return this.message;
         }
+    /**
+     * @param {{ length: number; readInt16BE: (arg0: number) => number; readUInt16BE: (arg0: number) => number; }} buf
+     */
     _parseAnswer(buf){
         var info = {};
         try{
@@ -72,6 +76,9 @@ class MeteoSokol{
     
     }
 
+/**
+ * @param {number} id
+ */
 function requestcmd(id){
     var buf = Buffer.from([id, 0x03,0x00,0x00,0x00,0x0C, 0x00,0x00]);
     var vcrc = crc16(buf.slice(0, buf.length-2));

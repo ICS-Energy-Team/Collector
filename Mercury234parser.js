@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 const crc16 = require('crc').crc16modbus;
@@ -23,14 +24,20 @@ class Mercury234{
         // REACTPOWER - накопленные значения реактивной энергии по квадрантам
         // DAYENERGY - total day active and reactive energy up to the current time
         this._commands = {'FAST': '0816A0', 'ACTIVEPOWER': '056000', 'REACTPOWER':'150000', 'ADMIN':'0102020202020202',
-                        'SERIALNUMBER': '0800', 'DAYENERGY':'054000', 'MONTHENERGY': '053100', 'TIME': '0400'
+                        'SERIALNUMBER': '0800', 'DAYENERGY':'054000', 'MONTHENERGY': '053100', 'TIME': '0400', 
+                        'GET_TRANSFORM_COEFF':'0802','SET_TRANSFORM_COEFF':'031B'
                         };        //'081411', '056000', '156000': U, Pcumul, Qcumul,
+        if(common){
+            this.Common = common;
+            this._searchdelay = common.moxa.Mercury234.searchdelay;
+            this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
+            this._cmdmaxtimeout = common.moxa.Mercury234.maxtimeout;    
+        }
         if ( mode == 'SIMPLE' ) {
             //this._twodigits = new Intl.NumberFormat('en-US',{minimumIntegerDigits:2})
             return;
             }
         
-        this.Common = common;
         this._datafile = './' + common.optionsfile + '.parserdata';
         this._searchdelay = common.moxa.Mercury234.searchdelay;
         this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
@@ -58,7 +65,8 @@ class Mercury234{
                 }
             else { 
                 let min = this.MIN_DEVICE_ID, max = this.MAX_DEVICE_ID;
-                this._array_tosearch = Array.from({length: max-min+1}, (_, i) => i + min); }
+                this._array_tosearch = Array.from({length: max-min+1}, (_, i) => i + min); 
+                }
             }
         else if ( mode == 'COLLECT' ) {
             this._runningcmd = 'FAST';
@@ -104,10 +112,10 @@ class Mercury234{
             }
             this.Common.moxa.Mercury234.devices.push(...this._devices);
             console.log("Found "+this._devices.length+" devices: "+this._devices);
-            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices},'utf8'));
+            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices}),'utf8');
             return "SEARCH_END";
             }
-        return { request: requestcmd(this._array_tosearch[this._i],this._commands['ADMIN']), timeout: this._searchdelay };
+        return { request: this.requestcmd(this._array_tosearch[this._i],this._commands['ADMIN']), timeout: this._searchdelay };
         }
 
     _request(){
@@ -125,7 +133,7 @@ class Mercury234{
         //this._requested_devices.push(d);
         this._runningdevice = d;
         return {
-            request: requestcmd(d,this._commands[this._runningcmd]), 
+            request: this.requestcmd(d,this._commands[this._runningcmd]), 
             timeout: this._cmdmaxtimeout
             };
         }
@@ -142,7 +150,7 @@ class Mercury234{
 
 
         this._tick = true;
-        return {request: requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
+        return {request: this.requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
         }
     async _endlongsearch(){
         if ( this._devices.length > 1 ) console.log('LOG: Strange, I found more than 1 device');
@@ -154,7 +162,7 @@ class Mercury234{
                 }
             }
         if ( flag ){
-            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices},'utf8'));
+            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices}),'utf8');
             }
         if ( this._devices.length > 0 )
             console.log("Mercury234parser. Found " +  JSON.stringify(this._devices) + " devices when in _longsearch");
@@ -199,7 +207,7 @@ class Mercury234{
         this._tick = true;
         let d = this._devices[this._i];
         //this._requested_devices.push(d);
-        return { request: requestcmd(d,this._commands[this._runningcmd]), timeout: this._cmdmaxtimeout };
+        return { request: this.requestcmd(d,this._commands[this._runningcmd]), timeout: this._cmdmaxtimeout };
         }
 
     _parseSearch(buf){
@@ -262,10 +270,17 @@ class Mercury234{
         return data;
         }// parseAnswer
 
-    getCommand(id, cmd, arg){
-        if ( cmd == 'MONTHENERGY')
-            this._commands['MONTHENERGY'] = setmonthenergy(arg);
-        return requestcmd(id, this._commands[cmd]);
+    getCommand(args){
+        let fullcmd = this._commands[args.cmd];
+        if ( args.cmd == 'MONTHENERGY' )
+            fullcmd = setmonthenergy(args.month);
+        if ( args.cmd == 'SET_TRANSFORM_COEFF' ) {
+            let t = Buffer.from([0,1,0,1]);
+            t.writeUInt16BE(args.coeff_voltage || 1,0);
+            t.writeUInt16BE(args.coeff_current || 1,2);
+            fullcmd += t.toString('hex');
+            }
+        return this.requestcmd(args.id, fullcmd);
         }
 
     parseRequest(cmd,buf){
@@ -313,6 +328,9 @@ class Mercury234{
             case 'TIME':
                 res = { Time: buf.toString('hex',3,4)+':'+buf.toString('hex',2,3)+':'+buf.toString('hex',1,2)+' '+buf.toString('hex',5,6)+'/'+buf.toString('hex',6,7)+'/'+buf.toString('hex',7,8)};
                 break;
+            case 'GET_TRANSFORM_COEFF':
+                res = { coeff_voltage: buf.readUInt16BE(1), coeff_current: buf.readUInt16BE(3) };
+                break;
             }
         return res;
         }
@@ -338,8 +356,20 @@ class Mercury234{
                 return Math.sign(buf.length - 19);
             case 'TIME':
                 return Math.sign(buf.length - 11);
+            case 'GET_TRANSFORM_COEFF':
+                return Math.sign(buf.length - 7);
+            case 'SET_TRANSFORM_COEFF':
+                return Math.sign(buf.length - 4);
             }
         }
+    
+    requestcmd(dID,cmd){
+        var outHex = Buffer.from([dID]).toString('hex') + cmd;
+        var crcHex = ('0000'+crc16(Buffer.from(outHex,'hex')).toString(16)).slice(-4); // crc for this command
+        var outgoingBuffer = Buffer.from( outHex+crcHex.substr(2,2)+crcHex.substr(0,2),'hex' );
+        return outgoingBuffer;
+        }
+        
     }// class end
 
 module.exports = Mercury234;
@@ -370,13 +400,6 @@ function setmonthenergy(m){
 
 function twodigits(i){
     return ('00'+i).slice(-2);
-    }
-
-function requestcmd(dID,cmd){
-    var outHex = Buffer.from([dID]).toString('hex') + cmd;
-    var crcHex = ('0000'+crc16(Buffer.from(outHex,'hex')).toString(16)).slice(-4); // crc for this command
-    var outgoingBuffer = Buffer.from( outHex+crcHex.substr(2,2)+crcHex.substr(0,2),'hex' );
-    return outgoingBuffer;
     }
       
 function readPowerValue(data, offset, powertype) {
