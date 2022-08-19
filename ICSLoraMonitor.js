@@ -378,7 +378,13 @@ function DecodeVegaSmartUM(buf) {
         co2: buf.readUInt16LE(13),
         anglevertical: buf.readUInt8(15)
         };
+
     var ret = {ts: obj.timestamp*1000, values: obj};
+    let curtime = +new Date();
+    if( Math.abs( ret.ts - curtime ) > 2592000000 /*30days*/ ){
+        ret.ts = curtime;
+    }
+
     //console.log('VegaSmartUM says: '+ JSON.stringify(ret));
     return ret;
     };
