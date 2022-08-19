@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "crc": "^3.8.0",
+    "json5": "^2.2.0",
+    "mqtt": "^4.2.6",
+    "node-schedule": "^2.0.0",
+    "package.json": "^2.0.1",
+    "prompt-sync": "^4.2.0",
+    "rotating-file-stream": "^2.1.5",
+    "websocket": "^1.0.33"
+  }
+}
