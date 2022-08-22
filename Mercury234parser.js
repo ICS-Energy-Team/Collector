@@ -283,6 +283,7 @@ class Mercury234{
         return this.requestcmd(args.id, fullcmd);
         }
 
+    coeff_current = 20;
     parseRequest(cmd,buf){
         var res = null;
         switch( cmd ){
@@ -291,13 +292,14 @@ class Mercury234{
                 let [p1,s1] = read_activepower_and_sign(buf, 4);
                 let [p2,s2] = read_activepower_and_sign(buf, 7);
                 let [p3,s3] = read_activepower_and_sign(buf, 10);
-                res = {  PT: pt,    P1: p1,   P2: p2,   P3: p3, PTsign: pt*st,  P1sign: p1*s1,  P2sign: p2*s2,  P3sign: p3*s3,
-                    QT: readPowerValue(buf, 13, 'Q')/100,  Q1:readPowerValue(buf, 16, 'Q')/100,
-                    Q2: readPowerValue(buf, 19, 'Q')/100,  Q3: readPowerValue(buf, 22, 'Q')/100,  ST:readPowerValue(buf, 25, 'S')/100,
+                res = {  PT: pt*this.coeff_current,    P1: p1*this.coeff_current,   P2: p2*this.coeff_current,   
+                    P3: p3*this.coeff_current, PTsign: pt*st*this.coeff_current,  P1sign: p1*s1*this.coeff_current,  P2sign: p2*s2*this.coeff_current,  P3sign: p3*s3*this.coeff_current,
+                    QT: readPowerValue(buf, 13, 'Q')/100*this.coeff_current,  Q1:readPowerValue(buf, 16, 'Q')/100*this.coeff_current,
+                    Q2: readPowerValue(buf, 19, 'Q')/100*this.coeff_current,  Q3: readPowerValue(buf, 22, 'Q')/100*this.coeff_current,  ST:readPowerValue(buf, 25, 'S')/100,
                     S1: readPowerValue(buf, 28, 'S')/100,  S2: readPowerValue(buf, 31, 'S')/100,  S3:readPowerValue(buf, 34, 'S')/100,
                     U1: read3byteUInt(buf, 37)/100,        U2: read3byteUInt(buf, 40)/100,        U3:read3byteUInt(buf, 43)/100,
                     alpha1: read3byteUInt(buf, 46)/100,    alpha2: read3byteUInt(buf, 49)/100,    alpha3:read3byteUInt(buf, 52)/100,
-                    I1: read3byteUInt(buf, 55)/1000,       I2: read3byteUInt(buf, 58)/1000,       I3:read3byteUInt(buf, 61)/1000,
+                    I1: read3byteUInt(buf, 55)/1000*this.coeff_current,       I2: read3byteUInt(buf, 58)/1000*this.coeff_current,       I3:read3byteUInt(buf, 61)/1000*this.coeff_current,
                     phiT: readPowerValue(buf, 64, 'Q')/1000,       phi1: readPowerValue(buf, 67, 'Q')/1000,       phi2: readPowerValue(buf, 70, 'Q')/1000, phi3:readPowerValue(buf, 73, 'Q')/1000,
                     frequency: read3byteUInt(buf, 76)/100,
                     harmonic1: buf.readUInt16LE(79)/100,   harmonic2: buf.readUInt16LE(81)/100,   harmonic3: buf.readUInt16LE(83)/100,
