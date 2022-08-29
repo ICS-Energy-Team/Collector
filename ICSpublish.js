@@ -10,14 +10,15 @@ class Publisher{
 
     constructor(config){
         var iotservers = config.iotservers;
+        let self = this;
         iotservers.forEach(function(iotserver){
             if( iotserver.type == 'file' )
                 {
-                this._name = iotserver.name || config.configname;
+                self._name = iotserver.name || config.configname;
                 var compressvar = iotserver.compress || "gzip";
                 var ext = 'log';
                 if ( compressvar === "gzip" ) ext += '.gz';
-                this._stream = rfs.createStream(`${this._name}.`+ext, {
+                self._stream = rfs.createStream(`${self._name}.`+ext, {
                     interval: iotserver.interval || "1d", // rotate daily
                     maxFiles: iotserver.maxFiles || 15, // rotate 2+ weeks
                     compress: compressvar // compress rotated files
