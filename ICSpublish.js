@@ -50,22 +50,23 @@ class Publisher{
         var valuesjson = JSON.stringify(datatosend.values,null,2);
         //console.log('Device ID ' + devEui +': data "'  + json + '" sent to: \n');
         console.log('Device ID ' + devEui +' with timestamp '  + datatosend.ts + ' sent to:');
+        let self = this;
 
         //for all destinations
         iotservers.forEach(function(iotserver) {
           // assign destination server and port from runtime parameters with TB cloud as default
           if (iotserver.type == 'file'){
               //if( elem == 0 ) startts = datatosend.ts;
-              this._dataArray[this._elem] = datatosend;
-              this._elem++;
+              self._dataArray[self._elem] = datatosend;
+              self._elem++;
               //if( datatosend.ts - startts > FileDump.timer ){
-              if( this._elem > this._arrayLen - this._overcount ){
-                this.saveToFile( this._dataArray.slice(0,this._elem) );
-                this._elem = 0;
+              if( self._elem > self._arrayLen - self._overcount ){
+                self.saveToFile( self._dataArray.slice(0,self._elem) );
+                self._elem = 0;
                 }
           } else if (iotserver.type == 'node-red') { // for node-red assume MQTT
-            if ( this._devices.hasOwnProperty('node-red') ){
-              this._devices['node-red'].connector.publish(iotserver.topic, json, function(err){
+            if ( self._devices.hasOwnProperty('node-red') ){
+              self._devices['node-red'].connector.publish(iotserver.topic, json, function(err){
                   if(err) {
                       var cli_str = "mqclientid "+ 'node-red';
                       console.log( cli_str + ", Cann't publish to node-red TB, error:" + err);
@@ -73,9 +74,9 @@ class Publisher{
                   });
             } else {
                 let mqclient = mqtt.connect('mqtt://'+iotserver.host+':'+iotserver.port);
-                this._devices['node-red'] = { connector:mqclient, data:datatosend };
-                var loc_mqttclients = this._mqttclients;
-                var loc_devices = this._devices;
+                self._devices['node-red'] = { connector:mqclient, data:datatosend };
+                var loc_mqttclients = self._mqttclients;
+                var loc_devices = self._devices;
                 mqclient.on('connect', function (topic, message) {
                   loc_mqttclients.count += 1;
                   console.log('node-red says connect.', ' mqtt clients counts: ' + JSON.stringify(loc_mqttclients));
@@ -130,11 +131,11 @@ class Publisher{
               let devID = teleoptions.host +'/'+ devToken;
 
             if( iotserver.protocol == 'mqtt' ) {
-                if ( this._devices.hasOwnProperty(devID) ){
-                  this._devices[devID].sendalltime = datatosend.ts;
-                  this._devices[devID].connector.publish('v1/devices/me/telemetry', json, function(err){
+                if ( self._devices.hasOwnProperty(devID) ){
+                  self._devices[devID].sendalltime = datatosend.ts;
+                  self._devices[devID].connector.publish('v1/devices/me/telemetry', json, function(err){
                       if(err) {
-                          var cli_str = "mqclientid "+ this._devices[devID].connector.options.clientId;
+                          var cli_str = "mqclientid "+ self._devices[devID].connector.options.clientId;
                           console.log( cli_str + ", Cann't publish to TB, error:" + err);
                           }
                       });
@@ -154,13 +155,13 @@ class Publisher{
                           devices[devToken].connector.publish('v1/devices/me/telemetry',smalljson);
                         }
                     }*/
-                    this._devices[devID].data = datatosend;
+                    self._devices[devID].data = datatosend;
                 } else {
                     let mqclient = mqtt.connect('mqtt://'+iotserver.host+':'+iotserver.port, {username: devToken});
                     let strClientId = 'mqclientid '+ mqclient.options.clientId;
-                    this._devices[devID] = { connector:mqclient, data:datatosend, sendalltime:datatosend.ts };
-                    var loc_mqttclients = this._mqttclients;
-                    var loc_devices = this._devices;
+                    self._devices[devID] = { connector:mqclient, data:datatosend, sendalltime:datatosend.ts };
+                    var loc_mqttclients = self._mqttclients;
+                    var loc_devices = self._devices;
                     /*mqclient.on('connect', function () {
                       mqclient.publish('v1/devices/me/telemetry',json);
                       mqclient.on('connect',function(){});
@@ -276,8 +277,8 @@ class Publisher{
             });
           } else if (iotserver.type == 'greenpl'){
               console.log("  Sending to GreenPL (host:" + iotserver.host + ")");
-              if ( this._GreenPL.hasOwnProperty('client') ){
-                this._GreenPL.client.publish('/devices/' + devEui, valuesjson, {"qos": 1, "retain": false},
+              if ( self._GreenPL.hasOwnProperty('client') ){
+                self._GreenPL.client.publish('/devices/' + devEui, valuesjson, {"qos": 1, "retain": false},
                     function (error, response) {
                         // print response to console
                         console.log(response);
@@ -285,10 +286,10 @@ class Publisher{
                         if (error) { console.log(error); }
                     });
               } else {
-                this._GreenPL.client = mqtt.connect('mqtt://' + iotserver.host,
+                self._GreenPL.client = mqtt.connect('mqtt://' + iotserver.host,
                     {username:iotserver.token, password:'1'}
                     );
-                    this._GreenPL.client.on('connect', function () {
+                    self._GreenPL.client.on('connect', function () {
                   console.log('GreenPL says connect');
                   GreenPL.client.publish('/devices/' + devEui, valuesjson, {"qos": 1, "retain": false},
                       function (error, response) {
@@ -299,26 +300,26 @@ class Publisher{
                           });
                       });
 
-                this._GreenPL.client.on('message', function (topic, message) {
+                self._GreenPL.client.on('message', function (topic, message) {
                   console.log('Response from GreenPL server: '+ message.toString());
                   });
-                this._GreenPL.client.on('error', function (error) {
+                self._GreenPL.client.on('error', function (error) {
                   console.log('Could not connect to GreenPL server with error: "'+error+'"');
                   console.log('Flush MQTT channel to GreenPL server');
-                  this._GreenPL.client.end();
-                  delete this._GreenPL['client'];
+                  self._GreenPL.client.end();
+                  delete self._GreenPL['client'];
                 });
-                this._GreenPL.client.on('offline', function () {
+                self._GreenPL.client.on('offline', function () {
                   console.log('GreenPL says offline');
                   });
-                this._GreenPL.client.on('disconnect', function (p) {
+                self._GreenPL.client.on('disconnect', function (p) {
                   console.log('GreenPL says disconnect '+p);
                   });
-                this._GreenPL.client.on('close', function () {
+                self._GreenPL.client.on('close', function () {
                   console.log('GreenPL says close');
-                  if ( this._GreenPL.hasOwnProperty('client') ){
-                    this._GreenPL.client.end();
-                    delete this._GreenPL['client'];
+                  if ( self._GreenPL.hasOwnProperty('client') ){
+                    self._GreenPL.client.end();
+                    delete self._GreenPL['client'];
                     }
                   });
               }
