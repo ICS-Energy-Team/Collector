@@ -35,6 +35,7 @@ class Mercury234{
         }
         if ( mode == 'SIMPLE' ) {
             //this._twodigits = new Intl.NumberFormat('en-US',{minimumIntegerDigits:2})
+            this._searchmethod = 'ADMIN';
             return;
             }
         
@@ -231,7 +232,7 @@ class Mercury234{
         }
 
     _parseSearch(buf){
-        let cmp = this.check_buf_length(this._runningcmd,buf);
+        let cmp = this.check_buf_length(this._searchmethod,buf);
         if ( cmp != 0 )
             { return sayError(eLENGTH,undefined,{cmp: cmp, buflen:buf.length, buf: buf.toString('hex'), where: 'Mercury234parser._parseSearch'}); }
     
