@@ -283,8 +283,11 @@ class Mercury234{
         var devEui = this.Common.moxa.name.slice(-10) +
                     '-MR234-' + ('000'+dID.toString(10)).slice(-3);
     
-        //console.log('Parsing command '+ runningcommand +'...');   
-        var sensordata = this.transformation_coeff_multiply( dID, this.parseRequest(this._runningcmd,buf) );
+        //console.log('Parsing command '+ runningcommand +'...');
+        var sensordata = this.parseRequest(this._runningcmd,buf);
+        if( this._runningcmd == 'FAST' ) {
+            this.transformation_coeff_multiply( dID, sensordata );
+            }
         if ( sensordata === null ){
             return sayError(eRESPONSE, 'buffer: '+buf.toString('hex'), {buflen:buf.length, devEui: devEui});
             }
