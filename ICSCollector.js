@@ -182,11 +182,11 @@ async function stateClient(newevent) {
             search_end = true;
             dataJob = schedule.scheduleJob( `*/${Common.moxa.datainterval} * * * * *`, 
                         stateClient.bind(null, ClientEvents.DEVICES_START_REQUEST) );
-            // no break - go to "DELETE" case
+            // NO BREAK - go to "DELETE" case
           case "DELETE":
             mechanisms.splice(imech,1); imech -= 1;
             curmechanism = null; 
-            // no break go to "END" case - choose mechanism
+            // NO BREAK go to "END" case - choose next mechanism
           case "END":
             imech += 1;
             if( imech >= mechanisms.length ){
