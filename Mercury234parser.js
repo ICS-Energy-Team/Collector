@@ -66,17 +66,16 @@ class Mercury234{
             const { found_devices } = readjson(this._datafile);
             if( Array.isArray(found_devices) && (found_devices.length > 0) ){
                 this._devices = [];
-                let array_tosearch = [], conf = new Map();
+                let array_tosearch = [];
                 found_devices.forEach( v => {
                     array_tosearch.push( v.id );
-                    conf.set( v.id, v );
+                    common.moxa.Mercury234.devices_conf.set( v.id, v );
                     });
                 this._array_tosearch = array_tosearch;
-                common.moxa.Mercury234.devices_conf = conf;
                 }
             else { 
                 this._needcoefficients = true;
-                this._devices = new Map();
+                this._devices = [];
                 let min = this.MIN_DEVICE_ID, max = this.MAX_DEVICE_ID;
                 this._array_tosearch = Array.from({length: max-min+1}, (_, i) => i + min); 
                 }
@@ -118,15 +117,15 @@ class Mercury234{
         if( this._i == -1 ) console.log("START SEARCH");
         this._i += 1;
         if( this._i >= this._array_tosearch.length ){
-            if( this._devices.size === 0 || this._devices.length === 0 ) {
+            if( this._devices.length === 0 || this._devices.size === 0 ) {
                 console.log( "I haven't found any devices. I have to halt collector due to config" );
                 console.log('searchmethod: ', this._searchmethod);
                 return "EXIT";
                 }
             if( this._searchmethod == 'GET_TRANSFORM_COEFF' ) {
                 let devices = [... this._devices.values()].map( x=>x.id )
-                this.Common.moxa.Mercury234.devices = devices;
-                this.Common.moxa.Mercury234.devices_conf = this._devices;
+                this.Common.moxa.Mercury234.devices.push(...devices);
+                this._devices.forEach( v => this.Common.moxa.Mercury234.devices_conf.set(v.id,v) );
                 console.log("Found "+devices.length+" devices: "+devices);
                 fs.writeFile(this._datafile,JSON.stringify({found_devices:[... this.Common.moxa.Mercury234.devices_conf.values()]}),'utf8');
                 return "SEARCH_END";
@@ -137,6 +136,7 @@ class Mercury234{
                     this._searchmethod = 'GET_TRANSFORM_COEFF';
                     this._array_tosearch = this._devices;
                     this._devices = new Map();
+                    this._i = 0;
                     }
                 else {
                     console.log("Found "+this._devices.length+" devices: "+this._devices);
