@@ -131,7 +131,6 @@ class Mercury234{
                 return "SEARCH_END";
             }
             else {
-                this.Common.moxa.Mercury234.devices = this._devices;
                 if( this._needcoefficients ) {
                     this._searchmethod = 'GET_TRANSFORM_COEFF';
                     this._array_tosearch = this._devices;
@@ -139,6 +138,7 @@ class Mercury234{
                     this._i = 0;
                     }
                 else {
+                    this.Common.moxa.Mercury234.devices.push(...this._devices);
                     console.log("Found "+this._devices.length+" devices: "+this._devices);
                     fs.writeFile(this._datafile,JSON.stringify({found_devices:[... this.Common.moxa.Mercury234.devices_conf.values()]}),'utf8');
                     return "SEARCH_END";
