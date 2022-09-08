@@ -91,7 +91,9 @@ class Mercury234{
         else if ( mode == 'LONGSEARCH' ) {
             this.request = this._longsearch;
             this.parse = this._parseSearch;
+            this._searchmethod = 'ADMIN';
             this._devices = [];
+            this._devices_conf = new Map();
             this._i = this.MIN_DEVICE_ID-1;
             this._tick = false;
             }
@@ -117,25 +119,26 @@ class Mercury234{
         if( this._i == -1 ) console.log("START SEARCH");
         this._i += 1;
         if( this._i >= this._array_tosearch.length ){
-            if( this._devices.length === 0 || this._devices.size === 0 ) {
+            if( this._devices.length === 0 ) {
                 console.log( "I haven't found any devices. I have to halt collector due to config" );
                 console.log('searchmethod: ', this._searchmethod);
                 return "EXIT";
                 }
             if( this._searchmethod == 'GET_TRANSFORM_COEFF' ) {
-                let devices = [... this._devices.values()].map( x=>x.id )
-                this.Common.moxa.Mercury234.devices.push(...devices);
-                this._devices.forEach( v => this.Common.moxa.Mercury234.devices_conf.set(v.id,v) );
-                console.log("Found "+devices.length+" devices: "+devices);
+                //let devices = [... this._devices.values()].map( x=>x.id )
+                this.Common.moxa.Mercury234.devices.push(...this._devices);
+                this._devices_conf.forEach( v => this.Common.moxa.Mercury234.devices_conf.set(v.id,v) );
+                console.log("Found "+this._devices.length+" devices: "+this._devices);
                 fs.writeFile(this._datafile,JSON.stringify({found_devices:[... this.Common.moxa.Mercury234.devices_conf.values()]}),'utf8');
                 return "SEARCH_END";
             }
             else {
-                if( this._needcoefficients ) {
+                if( this._needcoefficients ) { // get transform coefficients after open channels
                     this._searchmethod = 'GET_TRANSFORM_COEFF';
                     this._array_tosearch = this._devices;
-                    this._devices = new Map();
-                    this._i = 0;
+                    this._devices = [];
+                    this._devices_conf = new Map();
+                    this._i = 0; // start from first
                     }
                 else {
                     this.Common.moxa.Mercury234.devices.push(...this._devices);
@@ -170,6 +173,10 @@ class Mercury234{
 
     _longsearch(){
         if( this._tick ) {
+            if ( this._devices.length > 0 && !this.Common.moxa.Mercury234.devices_conf.has(this._devices[0]) ) {
+                this._searchmethod = 'GET_TRANSFORM_COEFF';
+                return {request: this.requestcmd(this._devices[0],this._commands[this._searchmethod]), timeout: this._searchdelay };
+                }
             this._endlongsearch();
             return "END";
             }
@@ -182,15 +189,22 @@ class Mercury234{
         this._tick = true;
         return {request: this.requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
         }
-    async _endlongsearch(){
+    async _endlongsearch() {
         if ( this._devices.length > 1 ) console.log('LOG: Strange, I found more than 1 device');
         let flag = false;
-        for( let i = 0; i<this._devices.length; i++){
-            if ( !this.Common.moxa.Mercury234.devices.includes(this._devices[i]) ){
-                this.Common.moxa.Mercury234.devices.push(this._devices[i]);
+        if ( !this.Common.moxa.Mercury234.devices.includes(this._devices[0]) ){
+            this.Common.moxa.Mercury234.devices.push(this._devices[0]);
+            flag = true;
+            }
+        else {
+            let t = this.Common.moxa.Mercury234.devices_conf.get(this._devices[0]);
+            let n = this._devices_conf.get(this._devices[0]);
+            if ( t.coeff_current != n.coeff_current ) {
+                this.Common.moxa.Mercury234.devices_conf.set(this._devices[0],n);
                 flag = true;
                 }
-            }
+        }
+
         if ( flag ){
             fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices}),'utf8');
             }
@@ -199,6 +213,7 @@ class Mercury234{
         else
             console.log("Mercury234parser. Not found device with ID=" +  this._i + " when in _longsearch");
         this._devices = [];
+        this._devices_conf = new Map();
         this._tick = false;
         }
 
@@ -255,11 +270,9 @@ class Mercury234{
         if( this._searchmethod == 'GET_TRANSFORM_COEFF' ){
             let res = this.parseRequest(this._searchmethod,buf);
             res.id = dID;
-            this._devices.set(dID, res);
+            this._devices_conf.set(dID, res);
             }
-        else{
-            this._devices.push(dID);
-            }
+        this._devices.push(dID);
         return {timeout:0};
         }
 
