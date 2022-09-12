@@ -143,7 +143,7 @@ class Mercury234{
                 else {
                     this.Common.moxa.Mercury234.devices.push(...this._devices);
                     console.log("Found "+this._devices.length+" devices: "+this._devices);
-                    fs.writeFile(this._datafile,JSON.stringify({found_devices:[... this.Common.moxa.Mercury234.devices_conf.values()]}),'utf8');
+                    fs.writeFile(this._datafile,JSON.stringify({found_devices:this._devices}),'utf8');
                     return "SEARCH_END";
                     }
                 }
@@ -173,11 +173,13 @@ class Mercury234{
 
     _longsearch(){
         if( this._tick ) {
-            if ( this._devices.length > 0 ) {
-                this._runningcmd == 'GET_TRANSFORM_COEFF'
-                return {request: this.requestcmd(this._devices[0],this._commands['GET_TRANSFORM_COEFF']), timeout: this._searchdelay };
+            if ( this._runningcmd == 'ADMIN' && this._devices.length > 0 ) {
+                this._runningcmd = 'GET_TRANSFORM_COEFF';
+                let id = this._devices[0];
+                this._devices = [];
+                return {request: this.requestcmd(id,this._commands['GET_TRANSFORM_COEFF']), timeout: this._searchdelay };
                 }
-            this._runningcmd = 'ADMIN'
+            this._runningcmd = 'ADMIN';
             this._endlongsearch();
             return "END";
             }
@@ -206,7 +208,7 @@ class Mercury234{
                 this.Common.moxa.Mercury234.devices_conf.set(id,n);
                 flag = true;
                 }
-        }
+            }
 
         if ( flag ){
             fs.writeFile(this._datafile,JSON.stringify({found_devices:[... this.Common.moxa.Mercury234.devices_conf.values()]}),'utf8');
@@ -271,12 +273,12 @@ class Mercury234{
             return sayError(eCRC,  'MODBUS error, id from packet=' + dID, {buf: buf.toString('hex'), where: 'Mercury234._parseSearch'});
             }
         
-        if( this._runningcmd == 'GET_TRANSFORM_COEFF' ){
+        if( this._runningcmd == 'GET_TRANSFORM_COEFF' ) {
             let res = this.parseRequest(this._runningcmd,buf);
             res.id = dID;
             this._devices_conf.set(dID, res);
             }
-        else { this._devices.push(dID); }
+        this._devices.push(dID);
         return {timeout:0};
         }
 
