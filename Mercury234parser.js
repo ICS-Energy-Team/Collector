@@ -35,7 +35,7 @@ class Mercury234{
         }
         if ( mode == 'SIMPLE' ) {
             //this._twodigits = new Intl.NumberFormat('en-US',{minimumIntegerDigits:2})
-            this._searchmethod = 'ADMIN';
+            this._runningcmd = 'ADMIN';
             return;
             }
         
@@ -62,7 +62,7 @@ class Mercury234{
 
             this._i = -1;
 
-            this._searchmethod = 'ADMIN';
+            this._runningcmd = 'ADMIN';
             const { found_devices } = readjson(this._datafile);
             if( Array.isArray(found_devices) && (found_devices.length > 0) ){
                 this._devices = [];
@@ -91,7 +91,7 @@ class Mercury234{
         else if ( mode == 'LONGSEARCH' ) {
             this.request = this._longsearch;
             this.parse = this._parseSearch;
-            this._searchmethod = 'ADMIN';
+            this._runningcmd = 'ADMIN';
             this._devices = [];
             this._devices_conf = new Map();
             this._i = this.MIN_DEVICE_ID-1;
@@ -121,10 +121,10 @@ class Mercury234{
         if( this._i >= this._array_tosearch.length ){
             if( this._devices.length === 0 ) {
                 console.log( "I haven't found any devices. I have to halt collector due to config" );
-                console.log('searchmethod: ', this._searchmethod);
+                console.log('searchmethod: ', this._runningcmd);
                 return "EXIT";
                 }
-            if( this._searchmethod == 'GET_TRANSFORM_COEFF' ) {
+            if( this._runningcmd == 'GET_TRANSFORM_COEFF' ) {
                 //let devices = [... this._devices.values()].map( x=>x.id )
                 this.Common.moxa.Mercury234.devices.push(...this._devices);
                 this._devices_conf.forEach( v => this.Common.moxa.Mercury234.devices_conf.set(v.id,v) );
@@ -134,7 +134,7 @@ class Mercury234{
             }
             else {
                 if( this._needcoefficients ) { // get transform coefficients after open channels
-                    this._searchmethod = 'GET_TRANSFORM_COEFF';
+                    this._runningcmd = 'GET_TRANSFORM_COEFF';
                     this._array_tosearch = this._devices;
                     this._devices = [];
                     this._devices_conf = new Map();
@@ -148,7 +148,7 @@ class Mercury234{
                     }
                 }
             }
-        return { request: this.requestcmd(this._array_tosearch[this._i],this._commands[this._searchmethod]), timeout: this._searchdelay };
+        return { request: this.requestcmd(this._array_tosearch[this._i],this._commands[this._runningcmd]), timeout: this._searchdelay };
         }
 
     _request(){
@@ -173,10 +173,11 @@ class Mercury234{
 
     _longsearch(){
         if( this._tick ) {
-            if ( this._devices.length > 0 && !this.Common.moxa.Mercury234.devices_conf.has(this._devices[0]) ) {
-                this._searchmethod = 'GET_TRANSFORM_COEFF';
-                return {request: this.requestcmd(this._devices[0],this._commands[this._searchmethod]), timeout: this._searchdelay };
+            if ( this._devices.length > 0 ) {
+                this._runningcmd == 'GET_TRANSFORM_COEFF'
+                return {request: this.requestcmd(this._devices[0],this._commands['GET_TRANSFORM_COEFF']), timeout: this._searchdelay };
                 }
+            this._runningcmd = 'ADMIN'
             this._endlongsearch();
             return "END";
             }
@@ -190,23 +191,25 @@ class Mercury234{
         return {request: this.requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
         }
     async _endlongsearch() {
-        if ( this._devices.length > 1 ) console.log('LOG: Strange, I found more than 1 device');
+        if ( this._devices.length > 1 ) console.log('Mercury234parser._endlongsearch LOG: Strange, I found more than 1 device');
         let flag = false;
-        if ( !this.Common.moxa.Mercury234.devices.includes(this._devices[0]) ){
-            this.Common.moxa.Mercury234.devices.push(this._devices[0]);
+        let id = this._devices[0];
+        if ( !this.Common.moxa.Mercury234.devices.includes(id) ){
+            this.Common.moxa.Mercury234.devices.push(id);
+            this.Common.moxa.Mercury234.devices_conf.set(id, this._devices_conf.get(id));
             flag = true;
             }
         else {
-            let t = this.Common.moxa.Mercury234.devices_conf.get(this._devices[0]);
-            let n = this._devices_conf.get(this._devices[0]);
+            let t = this.Common.moxa.Mercury234.devices_conf.get(id);
+            let n = this._devices_conf.get(id);
             if ( t.coeff_current != n.coeff_current ) {
-                this.Common.moxa.Mercury234.devices_conf.set(this._devices[0],n);
+                this.Common.moxa.Mercury234.devices_conf.set(id,n);
                 flag = true;
                 }
         }
 
         if ( flag ){
-            fs.writeFile(this._datafile,JSON.stringify({found_devices:this.Common.moxa.Mercury234.devices}),'utf8');
+            fs.writeFile(this._datafile,JSON.stringify({found_devices:[... this.Common.moxa.Mercury234.devices_conf.values()]}),'utf8');
             }
         if ( this._devices.length > 0 )
             console.log("Mercury234parser. Found " +  JSON.stringify(this._devices) + " devices when in _longsearch");
@@ -256,7 +259,8 @@ class Mercury234{
         }
 
     _parseSearch(buf){
-        let cmp = this.check_buf_length(this._searchmethod,buf);
+        // check length
+        let cmp = this.check_buf_length(this._runningcmd,buf);
         if ( cmp != 0 )
             { return sayError(eLENGTH,undefined,{cmp: cmp, buflen:buf.length, buf: buf.toString('hex'), where: 'Mercury234parser._parseSearch'}); }
     
@@ -267,12 +271,12 @@ class Mercury234{
             return sayError(eCRC,  'MODBUS error, id from packet=' + dID, {buf: buf.toString('hex'), where: 'Mercury234._parseSearch'});
             }
         
-        if( this._searchmethod == 'GET_TRANSFORM_COEFF' ){
-            let res = this.parseRequest(this._searchmethod,buf);
+        if( this._runningcmd == 'GET_TRANSFORM_COEFF' ){
+            let res = this.parseRequest(this._runningcmd,buf);
             res.id = dID;
             this._devices_conf.set(dID, res);
             }
-        this._devices.push(dID);
+        else { this._devices.push(dID); }
         return {timeout:0};
         }
 
