@@ -193,19 +193,27 @@ class Mercury234{
         return {request: this.requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
         }
     async _endlongsearch() {
-        if ( this._devices.length > 1 ) console.log('Mercury234parser._endlongsearch LOG: Strange, I found more than 1 device');
+        let len = this._devices.length;
+        if ( len > 1 ) console.log('Mercury234parser._endlongsearch LOG: Strange, I found more than 1 device');
+
+        let [dev_id, dev_coeff] = [this._devices[0],this._devices_conf.get(this._devices[0])];
+        [this._devices, this._devices_conf] = [[],new Map()];
+        this._tick = false;
+
+        if ( len == 0 ){
+            console.log("Mercury234parser. Not found device with ID=" +  this._i + " when in _longsearch");
+            return;
+            }
         let flag = false;
-        let id = this._devices[0];
-        if ( !this.Common.moxa.Mercury234.devices.includes(id) ){
-            this.Common.moxa.Mercury234.devices.push(id);
-            this.Common.moxa.Mercury234.devices_conf.set(id, this._devices_conf.get(id));
+        if ( !this.Common.moxa.Mercury234.devices.includes(dev_id) ){
+            this.Common.moxa.Mercury234.devices.push(dev_id);
+            this.Common.moxa.Mercury234.devices_conf.set(dev_id, dev_coeff);
             flag = true;
             }
         else {
-            let t = this.Common.moxa.Mercury234.devices_conf.get(id);
-            let n = this._devices_conf.get(id);
-            if ( t.coeff_current != n.coeff_current ) {
-                this.Common.moxa.Mercury234.devices_conf.set(id,n);
+            let t = this.Common.moxa.Mercury234.devices_conf.get(dev_id);
+            if ( t.coeff_current != dev_coeff.coeff_current ) {
+                this.Common.moxa.Mercury234.devices_conf.set(dev_id,dev_coeff);
                 flag = true;
                 }
             }
@@ -213,13 +221,7 @@ class Mercury234{
         if ( flag ){
             fs.writeFile(this._datafile,JSON.stringify({found_devices:[... this.Common.moxa.Mercury234.devices_conf.values()]}),'utf8');
             }
-        if ( this._devices.length > 0 )
-            console.log("Mercury234parser. Found " +  JSON.stringify(this._devices) + " devices when in _longsearch");
-        else
-            console.log("Mercury234parser. Not found device with ID=" +  this._i + " when in _longsearch");
-        this._devices = [];
-        this._devices_conf = new Map();
-        this._tick = false;
+        console.log("Mercury234parser. Found " +  JSON.stringify(this._devices) + " devices when in _longsearch");
         }
 
     _wakeUp(){
