@@ -374,10 +374,13 @@ function DecodeVegaSmartUM(buf) {
         temperature: buf.readInt16LE(7) / 10,
         humidity: buf.readUInt8(9),
         illumination: buf.readUInt16LE(10),
-        noise: buf.readUInt8(12),
-        co2: buf.readUInt16LE(13),
-        anglevertical: buf.readUInt8(15)
+        noise: buf.readUInt8(12)        
         };
+    if( buf.length >= 15 )
+        { obj.co2 = buf.readUInt16LE(13); }
+    if( buf.length >= 16 )
+        { obj.anglevertical = buf.readUInt8(15); }
+
 
     var ret = {ts: obj.timestamp*1000, values: obj};
     let curtime = +new Date();
