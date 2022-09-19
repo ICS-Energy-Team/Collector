@@ -319,14 +319,13 @@ class Mercury234{
         var devEui = this.Common.moxa.name.slice(-10) +
                     '-MR234-' + ('000'+dID.toString(10)).slice(-3);
     
-        // hardly but test that we know transformation coefficient
-        if( ! this._devices_conf.has(dID) ){
-            return sayError(eTRANS_COEFF, 'device id: '+dID, {buflen:buf.length, devEui: devEui});
-            }
-
         //console.log('Parsing command '+ runningcommand +'...');
         var sensordata = this.parseRequest(this._runningcmd,buf);
         if( this._runningcmd == 'FAST' ) {
+            // hardly but test that we know transformation coefficient
+            if( ! this._devices_conf.has(dID) ){
+                return sayError(eTRANS_COEFF, 'device id: '+dID, {buflen:buf.length, devEui: devEui});
+                }
             this.transformation_coeff_multiply( dID, sensordata );
             }
         if ( sensordata === null ){
