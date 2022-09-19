@@ -33,13 +33,14 @@ class Mercury234{
             this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
             this._cmdmaxtimeout = common.moxa.Mercury234.maxtimeout;    
         }
+        this._datafile = './' + common.optionsfile + '.parserdata';
+
         if ( mode == 'SIMPLE' ) {
             //this._twodigits = new Intl.NumberFormat('en-US',{minimumIntegerDigits:2})
             this._runningcmd = 'ADMIN';
             return;
             }
         
-        this._datafile = './' + common.optionsfile + '.parserdata';
         this._searchdelay = common.moxa.Mercury234.searchdelay;
         this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
         this._cmdmaxtimeout = common.moxa.Mercury234.maxtimeout;
@@ -127,7 +128,11 @@ class Mercury234{
                 }
             if( this._runningcmd == 'GET_TRANSFORM_COEFF' ) {
                 //let devices = [... this._devices.values()].map( x=>x.id )
-                this.Common.moxa.Mercury234.devices.push(...this._prev_devices);/// all saved devices. IF this._devices - then only answered devices;
+                if( this._known_devices ) {
+                    this.Common.moxa.Mercury234.devices.push(...this._known_devices);/// all saved devices. IF this._devices - then only answered devices;
+                } else {
+                    this.Common.moxa.Mercury234.devices.push(...this._devices);
+                }
                 this._devices_conf.forEach( v => this.Common.moxa.Mercury234.devices_conf.set(v.id,v) );
                 console.log("Found "+this._devices.length+" devices: "+this._devices);
                 fs.writeFile(this._datafile,JSON.stringify({found_devices:[... this.Common.moxa.Mercury234.devices_conf.values()]}),'utf8');
