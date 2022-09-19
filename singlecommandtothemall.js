@@ -30,8 +30,10 @@ client.on('data', function(buf) { // not asynchronous!!
     else {
         curr_state = 1;
         curr_id += 1;
+        let _cmd = merc._runningcmd;
         merc._runningcmd = args.cmd;
         let r = merc._parseAnswer(buf);
+        merc._runningcmd = _cmd;
         console.dir( r );
         }
     // console.log('Send command: ' + merc.getCommand(args).toString('hex'));

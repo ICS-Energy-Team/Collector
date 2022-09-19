@@ -72,6 +72,7 @@ class Mercury234{
                     common.moxa.Mercury234.devices_conf.set( v.id, v );
                     });
                 this._array_tosearch = array_tosearch;
+                this._known_devices = array_tosearch; // save known devices
                 }
             else { 
                 this._needcoefficients = true;
@@ -126,7 +127,7 @@ class Mercury234{
                 }
             if( this._runningcmd == 'GET_TRANSFORM_COEFF' ) {
                 //let devices = [... this._devices.values()].map( x=>x.id )
-                this.Common.moxa.Mercury234.devices.push(...this._devices);
+                this.Common.moxa.Mercury234.devices.push(...this._prev_devices);/// all saved devices. IF this._devices - then only answered devices;
                 this._devices_conf.forEach( v => this.Common.moxa.Mercury234.devices_conf.set(v.id,v) );
                 console.log("Found "+this._devices.length+" devices: "+this._devices);
                 fs.writeFile(this._datafile,JSON.stringify({found_devices:[... this.Common.moxa.Mercury234.devices_conf.values()]}),'utf8');
@@ -313,6 +314,11 @@ class Mercury234{
         var devEui = this.Common.moxa.name.slice(-10) +
                     '-MR234-' + ('000'+dID.toString(10)).slice(-3);
     
+        // hardly but test that we know transformation coefficient
+        if( ! this._devices_conf.has(dID) ){
+            return sayError(eTRANS_COEFF, 'device id: '+dID, {buflen:buf.length, devEui: devEui});
+            }
+
         //console.log('Parsing command '+ runningcommand +'...');
         var sensordata = this.parseRequest(this._runningcmd,buf);
         if( this._runningcmd == 'FAST' ) {
@@ -447,14 +453,16 @@ module.exports = Mercury234;
 
 
 const eERROR = Symbol.for('ERROR'), eLENGTH = Symbol.for('LENGTH'), eCRC = Symbol.for('CRC'),
-                eDIFFCMD = Symbol.for('DIFFCMD'), eRESPONSE = Symbol.for('RESPONSE'), eDATA = Symbol.for('DATA');
+                eDIFFCMD = Symbol.for('DIFFCMD'), eRESPONSE = Symbol.for('RESPONSE'), eDATA = Symbol.for('DATA'),
+                eTRANS_COEFF = Symbol.for('TRANS_COEFF');
 const errors_msg = {
     [eERROR]: 'Some error', 
     [eLENGTH]: 'RECEIVED bad length of data',
     [eCRC]: 'CRC FAIL',
     [eDIFFCMD]: 'Different commands',
     [eRESPONSE]: 'RECEIVED BAD response',
-    [eDATA]: 'Bad encoded sensor data'
+    [eDATA]: 'Bad encoded sensor data',
+    [eTRANS_COEFF]: 'Unknown transform coefficient'
     };
 function sayError(err, str, obj) {
     return {
