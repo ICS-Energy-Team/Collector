@@ -74,6 +74,7 @@ class Mercury234{
                     });
                 this._array_tosearch = array_tosearch;
                 this._known_devices = array_tosearch; // save known devices
+                this._needcoefficients = true;
                 }
             else { 
                 this._needcoefficients = true;
