@@ -16,17 +16,17 @@ const fs = require('fs/promises');
 */
 
 class Mercury234{
-    constructor(common, mode = 'SEARCH'){
-        this._version = "MercuryMonitor v. 1.7 for Mercury 234";
-        this._versiondate = "15 Jan 2020";
         // FAST - моментальные значения: ускоренное измерение
         // ACTIVEPOWER - накопленные значения активной энергии по фазам
         // REACTPOWER - накопленные значения реактивной энергии по квадрантам
         // DAYENERGY - total day active and reactive energy up to the current time
-        this._commands = {'FAST': '0816A0', 'ACTIVEPOWER': '056000', 'REACTPOWER':'150000', 'ADMIN':'0102020202020202',
+    static _version = "MercuryMonitor v. 1.7 for Mercury 234";
+    static _versiondate = "15 Jan 2020";
+    static _commands = {'FAST': '0816A0', 'ACTIVEPOWER': '056000', 'REACTPOWER':'150000', 'ADMIN':'0102020202020202',
                         'SERIALNUMBER': '0800', 'DAYENERGY':'054000', 'MONTHENERGY': '053100', 'TIME': '0400', 
-                        'GET_TRANSFORM_COEFF':'0802','SET_TRANSFORM_COEFF':'031B'
-                        };        //'081411', '056000', '156000': U, Pcumul, Qcumul,
+                        'GET_TRANSFORM_COEFF':'0802','SET_TRANSFORM_COEFF':'031B'}; //'081411', '056000', '156000': U, Pcumul, Qcumul,
+
+    constructor(common, mode = 'SEARCH'){
         if(common){
             this.Common = common;
             this._searchdelay = common.moxa.Mercury234.searchdelay;
@@ -155,7 +155,7 @@ class Mercury234{
                     }
                 }
             }
-        return { request: this.requestcmd(this._array_tosearch[this._i],this._commands[this._runningcmd]), timeout: this._searchdelay };
+        return { request: this.requestcmd(this._array_tosearch[this._i],Mercury234._commands[this._runningcmd]), timeout: this._searchdelay };
         }
 
     _request(){
@@ -173,7 +173,7 @@ class Mercury234{
         //this._requested_devices.push(d);
         this._runningdevice = d;
         return {
-            request: this.requestcmd(d,this._commands[this._runningcmd]), 
+            request: this.requestcmd(d,Mercury234._commands[this._runningcmd]), 
             timeout: this._cmdmaxtimeout
             };
         }
@@ -184,7 +184,7 @@ class Mercury234{
                 this._runningcmd = 'GET_TRANSFORM_COEFF';
                 let id = this._devices[0];
                 this._devices = [];
-                return {request: this.requestcmd(id,this._commands['GET_TRANSFORM_COEFF']), timeout: this._searchdelay };
+                return {request: this.requestcmd(id,Mercury234._commands['GET_TRANSFORM_COEFF']), timeout: this._searchdelay };
                 }
             this._runningcmd = 'ADMIN';
             this._endlongsearch();
@@ -197,7 +197,7 @@ class Mercury234{
 
 
         this._tick = true;
-        return {request: this.requestcmd(this._i,this._commands['ADMIN']), timeout: this._searchdelay };
+        return {request: this.requestcmd(this._i,Mercury234._commands['ADMIN']), timeout: this._searchdelay };
         }
     async _endlongsearch() {
         let len = this._devices.length;
@@ -243,7 +243,7 @@ class Mercury234{
                 so we don't have to decrease d to get previous month
             */
             if ( d == 0 ) d = 12; // only this special case
-            this._commands['MONTHENERGY'] = setmonthenergy(d);
+            Mercury234._commands['MONTHENERGY'] = setmonthenergy(d);
             }
         }
 
@@ -266,7 +266,7 @@ class Mercury234{
         this._tick = true;
         let d = this._devices[this._i];
         //this._requested_devices.push(d);
-        return { request: this.requestcmd(d,this._commands[this._runningcmd]), timeout: this._cmdmaxtimeout };
+        return { request: this.requestcmd(d,Mercury234._commands[this._runningcmd]), timeout: this._cmdmaxtimeout };
         }
 
     _parseSearch(buf){
@@ -342,7 +342,7 @@ class Mercury234{
         }// parseAnswer
 
     getCommand(args){
-        let fullcmd = this._commands[args.cmd];
+        let fullcmd = Mercury234._commands[args.cmd];
         if ( args.cmd == 'MONTHENERGY' )
             fullcmd = setmonthenergy(args.month);
         if ( args.cmd == 'SET_TRANSFORM_COEFF' ) {
