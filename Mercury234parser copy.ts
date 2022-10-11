@@ -1,4 +1,3 @@
-// @ts-check
 'use strict';
 
 const crc16 = require('crc').crc16modbus;
@@ -15,6 +14,10 @@ const fs = require('fs/promises');
   vkorepanov@ipu.ru
 */
 
+type MParseRetType = {devEui?: string, values?: any, timeout: number, correcttimestamp?: number};
+type MEmptyString = '' | undefined | string
+type MErrType = { error:Symbol, message:MEmptyString, data:any };
+
 class Mercury234{
         // FAST - моментальные значения: ускоренное измерение
         // ACTIVEPOWER - накопленные значения активной энергии по фазам
@@ -25,7 +28,28 @@ class Mercury234{
     static _commands = {'FAST': '0816A0', 'ACTIVEPOWER': '056000', 'REACTPOWER':'150000', 'ADMIN':'0102020202020202',
                         'SERIALNUMBER': '0800', 'DAYENERGY':'054000', 'MONTHENERGY': '053100', 'TIME': '0400', 
                         'GET_TRANSFORM_COEFF':'0802','SET_TRANSFORM_COEFF':'031B'}; //'081411', '056000', '156000': U, Pcumul, Qcumul,
-
+    static MIN_DEVICE_ID = 1;
+    static MAX_DEVICE_ID = 250;
+    Common: any;
+    _mode: string;
+    _searchdelay: number;
+    _cmdmintimeout: number;
+    _cmdmaxtimeout: number;
+    _datafile: string;
+    _runningcmd: string;
+    _EnergyModes: Set<string>;
+    _moscowdate: Intl.DateTimeFormat;
+    request: () => "EXIT" | "SEARCH_END" | "END" | { request: Buffer; timeout: number; };
+    parse: (buf: Buffer) => MErrType | MParseRetType;
+    _devices: number[];
+    _i: number;
+    _array_tosearch: number[];
+    _known_devices: number[];
+    _needcoefficients: boolean;
+    _devices_conf: Map<number, any>;
+    _tick: boolean;
+    _runningdevice: number;
+    private _turnOn: boolean;
     constructor(common, mode = 'SEARCH'){
         if(common){
             this.Common = common;
@@ -44,8 +68,6 @@ class Mercury234{
         this._searchdelay = common.moxa.Mercury234.searchdelay;
         this._cmdmintimeout = common.moxa.Mercury234.mintimeout;
         this._cmdmaxtimeout = common.moxa.Mercury234.maxtimeout;
-        this.MIN_DEVICE_ID = 1;
-        this.MAX_DEVICE_ID = 250;
         //this._requested_devices = [];
 
         this._mode = mode;
@@ -67,7 +89,7 @@ class Mercury234{
             const { found_devices } = readjson(this._datafile);
             if( Array.isArray(found_devices) && (found_devices.length > 0) ){
                 this._devices = [];
-                let array_tosearch = [];
+                let array_tosearch: number[] = [];
                 found_devices.forEach( v => {
                     array_tosearch.push( v.id );
                     common.moxa.Mercury234.devices_conf.set( v.id, v );
@@ -79,7 +101,7 @@ class Mercury234{
             else { 
                 this._needcoefficients = true;
                 this._devices = [];
-                let min = this.MIN_DEVICE_ID, max = this.MAX_DEVICE_ID;
+                let min = Mercury234.MIN_DEVICE_ID, max = Mercury234.MAX_DEVICE_ID;
                 this._array_tosearch = Array.from({length: max-min+1}, (_, i) => i + min); 
                 }
             }
@@ -97,7 +119,7 @@ class Mercury234{
             this._runningcmd = 'ADMIN';
             this._devices = [];
             this._devices_conf = new Map();
-            this._i = this.MIN_DEVICE_ID-1;
+            this._i = Mercury234.MIN_DEVICE_ID-1;
             this._tick = false;
             }
         else if ( this._EnergyModes.has(mode) ) {
@@ -192,8 +214,8 @@ class Mercury234{
             }
 
         this._i += 1;
-        if( this._i > this.MAX_DEVICE_ID )
-            this._i = this.MIN_DEVICE_ID;
+        if( this._i > Mercury234.MAX_DEVICE_ID )
+            this._i = Mercury234.MIN_DEVICE_ID;
 
 
         this._tick = true;
@@ -269,7 +291,7 @@ class Mercury234{
         return { request: this.requestcmd(d,Mercury234._commands[this._runningcmd]), timeout: this._cmdmaxtimeout };
         }
 
-    _parseSearch(buf){
+    _parseSearch(buf: Buffer): MParseRetType | MErrType {
         // check length
         let cmp = this.check_buf_length(this._runningcmd,buf);
         if ( cmp != 0 )
@@ -292,7 +314,7 @@ class Mercury234{
         }
 
     // depends on this._runningcmd !
-    _parseAnswer(buf){
+    _parseAnswer(buf): MErrType | MParseRetType {
         let cmp = this.check_buf_length(this._runningcmd,buf);
         if ( cmp != 0 )
             { return sayError(eLENGTH,undefined,{cmp: cmp, buflen:buf.length, buf: buf.toString('hex'), where: 'Mercury234parser._parseAnswer'}); }
@@ -332,9 +354,9 @@ class Mercury234{
         if ( sensordata === null ){
             return sayError(eRESPONSE, 'buffer: '+buf.toString('hex'), {buflen:buf.length, devEui: devEui});
             }
-        var data = {devEui: devEui, values: sensordata, timeout: timeout};
+        var data:MParseRetType = {devEui: devEui, values: sensordata, timeout: timeout};
 
-        if( this._runningcmd === 'MONTHENERGY' ){
+        if( this._runningcmd == 'MONTHENERGY' ){
             data.correcttimestamp = - 2_419_200_000; // ms in 28 days ~ one month ago
             }
 
@@ -355,7 +377,7 @@ class Mercury234{
         }
 
     parseRequest(cmd,buf){
-        var res = null;
+        var res: any = null;
         switch( cmd ){
             case 'FAST': // моментальные значения: ускоренное измерение
                 let [pt,st] = read_activepower_and_sign(buf, 1);
@@ -407,7 +429,7 @@ class Mercury234{
         return res;
         }
 
-    check_buf_length(cmd,buf){
+    check_buf_length(cmd,buf): number | undefined {
         switch( cmd ){
             case 'FAST': // моментальные значения: ускоренное измерение
                 if( buf.length < 89 ) return -1;
@@ -437,7 +459,7 @@ class Mercury234{
             }
         }
     
-    transformation_coeff_multiply( id, data ) {
+    transformation_coeff_multiply( id, data ): void {
         let coeff_current = this._devices_conf.get(id).coeff_current;
         data.PT *= coeff_current;       data.P1 *= coeff_current;       data.P2 *= coeff_current;       data.P3 *= coeff_current;
         data.PTsign *= coeff_current;   data.P1sign *= coeff_current;   data.P2sign *= coeff_current;   data.P3sign *= coeff_current;
@@ -445,7 +467,7 @@ class Mercury234{
         data.I1 *= coeff_current;       data.I2 *= coeff_current;       data.I3 *= coeff_current;
         }
 
-    requestcmd(dID,cmd){
+    requestcmd(dID,cmd): Buffer {
         var outHex = Buffer.from([dID]).toString('hex') + cmd;
         var crcHex = ('0000'+crc16(Buffer.from(outHex,'hex')).toString(16)).slice(-4); // crc for this command
         var outgoingBuffer = Buffer.from( outHex+crcHex.substr(2,2)+crcHex.substr(0,2),'hex' );
@@ -469,7 +491,7 @@ const errors_msg = {
     [eDATA]: 'Bad encoded sensor data',
     [eTRANS_COEFF]: 'Unknown transform coefficient'
     };
-function sayError(err, str, obj) {
+function sayError(err:symbol, str:MEmptyString, obj:any): MErrType {
     return {
         error: err, 
         message: str ?? errors_msg[err] ?? errors_msg[eERROR],
@@ -477,16 +499,16 @@ function sayError(err, str, obj) {
         };
     }
     
-function setmonthenergy(m){
+function setmonthenergy(m):string{
     m = Math.max(1,Math.min(m,12));
     return '053'+ m.toString(16) +'00';
     }
 
-function twodigits(i){
+function twodigits(i):string{
     return ('00'+i).slice(-2);
     }
       
-function readPowerValue(data, offset, powertype) {
+function readPowerValue(data, offset, powertype): number {
     //console.log('readPowerValue');
     var p = ((data.readUInt8(offset)&0x3F) <<16) + data.readUInt16LE(offset+1);
     //      if ((data.readUInt8(offset)&0x80)!=0 && powertype=='P') { p *= -1; }
@@ -494,19 +516,19 @@ function readPowerValue(data, offset, powertype) {
     return p;
     }
 
-function read_activepower_and_sign(data, offset){
+function read_activepower_and_sign(data, offset): [number, 1|-1] {
     var p = ((data.readUInt8(offset)&0x3F) << 16) + data.readUInt16LE(offset+1);
     if ( (data.readUInt8(offset)&0x80) === 0 ) { return [p/100, 1]; }
     return [p/100, -1];
     }
 
 // read 3-byte Int from the string starting from offset
-function read3byteUInt(data, offset) {
+function read3byteUInt(data, offset): number {
     //console.log('read3byteUInt');
     return (data.readUInt8(offset) <<16) + data.readUInt16LE(offset+1);
     }
 
-function read4byteUInt(data, offset) {
+function read4byteUInt(data, offset): number {
     //console.log('read4byteUInt');
     return (data.readUInt16LE(offset) <<16) + data.readUInt16LE(offset+2);
     }

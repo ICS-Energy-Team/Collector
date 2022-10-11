@@ -8,5 +8,8 @@
     "prompt-sync": "^4.2.0",
     "rotating-file-stream": "^2.1.5",
     "websocket": "^1.0.33"
+  },
+  "devDependencies": {
+    "@types/node": "^18.8.3"
   }
 }
