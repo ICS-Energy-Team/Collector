@@ -1,13 +1,17 @@
 // @ts-check
 'use sctrict';
 const { readFile, opendir, writeFile } = require('fs/promises');
+const JSON5 = require('json5')
 
 async function get_configs(dir){
     let jsons = [];
     try {
         const d = await opendir(dir);
         for await (const dirent of d) {
-            if( dirent.isFile() && dirent.name.endsWith('.json') ) { jsons.push(dirent.name); };
+            if( dirent.isFile() && (dirent.name.endsWith('.json')||dirent.name.endsWith('.json5')) ) { 
+                console.log(dirent.name);
+                jsons.push(dirent.name); 
+                };
             }
     } catch (err) {
         console.error(err);
@@ -16,7 +20,11 @@ async function get_configs(dir){
 }
 
 function* search_in_array(array,depth){
-    
+    for( let el of array ){
+        if( typeof el === 'object' ){
+            yield* search_in_object(el, depth - 1)
+            }
+        }
     }
 function* search_in_object(obj,depth){
     if( depth === undefined ){
@@ -40,11 +48,11 @@ function* search_in_object(obj,depth){
 get_configs('.')
 .then( arr => Promise.all(arr) )
 .then( arr => {
-    let devices = [];
+    let devices = {};
     for( let f of arr ){
-        let c = JSON.parse(f);
-        if( c.moxa && c.moxa.host && c.moxa.tbtoken ) {
-            devices.push({ip:c.moxa.host, tbtoken: c.moxa.tbtoken});
+        let c = JSON5.parse(f);
+        for ( let item of search_in_object(c,10) ) {
+            devices[item.host] = item.tbtoken;
             }
         }
     return devices;

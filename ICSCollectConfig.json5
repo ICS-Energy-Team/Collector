@@ -1,10 +1,10 @@
 {
   "device":{
     "name": "meteo"
-  }
+  },
   "script":{
     "maxwaiters":10
-  }
+  },
   "loraserver": {
     "host": "193.232.196.28",
     "port" : 8002,
