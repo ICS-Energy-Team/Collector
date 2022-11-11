@@ -129,7 +129,7 @@ class Publisher{
                   method: 'POST'
                   };
 
-              let devID = teleoptions.host +'/'+ devToken;
+              let devID = teleoptions.host+':'+ teleoptions.port +'/'+ devToken;
 
             if( iotserver.protocol == 'mqtt' ) {
                 if ( self._devices.hasOwnProperty(devID) ){
