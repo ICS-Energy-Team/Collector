@@ -10,9 +10,13 @@ const fs = require('fs/promises');
 
 
 /*
-  Mercury234 simple payload decoder.
+  Mercury234 not simple payload decoder.
   Use it as it is or remove the bugs :)
   vkorepanov@ipu.ru
+*/
+
+/*
+    Тут смешаны декодеры байтов от/к меркурию и режимы работы (механизмы в ICSCollector.js), по хорошему их нужно разнести в разные классы
 */
 
 class Mercury234{

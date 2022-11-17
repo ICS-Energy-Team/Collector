@@ -6,6 +6,11 @@
   vkorepanov@ipu.ru
 */
 
+/*
+    Использую постоянный долгий поиск новых устройств, т.к. иначе (отдельно опрос данных, потом поиск новых устройств и опрос данных с новыми устройствами) придётся останавливать поиск.
+*/
+
+
 const CollectorName = "Collector v. 0.9";
 const CollectorVersionDate = "10 Feb 2022";
 const _moscowdate = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'long', timeZone: 'Europe/Moscow', hour12: false });
@@ -38,6 +43,7 @@ const Common = { moxa: opts.moxa, plan: [], optionsfile: process.argv[2] }; // c
 
 if( opts.moxa.Mercury234 && opts.moxa.Mercury234.active ){
     const Merc234 = require('./Mercury234parser');
+    // механизмы работы с устройствами - поиск, сбор данных, долгий поиск
     mechanisms.push( new Merc234(Common,'SEARCH') );
     mechanisms.push( new Merc234(Common,'COLLECT') );
     mechanisms.push( new Merc234(Common,'LONGSEARCH') );
@@ -119,7 +125,7 @@ setState(ClientStates.NOT_CONNECTED);
 // Let's go!
 stateJob = schedule.scheduleJob('*/3 * * * * *', stateClient);
 
-async function stateClient(newevent) {
+async function stateClient(newevent) { // конечный автомат с двумя состояниями NOT_CONNECTED и DATA_COLLECTION
     switch (clientState) {
     case ClientStates.NOT_CONNECTED :
         if( newevent === ClientEvents.CONNECT_SUCCESS ) {
@@ -153,13 +159,13 @@ async function stateClient(newevent) {
         else if( (newevent == ClientEvents.DEVICES_START_REQUEST) || stateChanged ) 
             {
             if( busy ){
-                waiters_queue();
+                waiters_queue(); // откладываем запрос в очередь
                 return;
                 }
             busy = true;
             imech = 0;
             curmechanism = mechanisms[imech];
-            // запрос данных каждые opts.moxa.datainterval мс
+            // запрос к устройству от каждого механизма каждые Common.moxa.datainterval мс
             if( stateChanged ) {
                 stateChanged = false;
                 if ( search_end ){
@@ -171,7 +177,7 @@ async function stateClient(newevent) {
         if ( curmechanism === null )
             {sayLog({LOG:'curmechanism is null', where:'stateClient()', }); return;}
 
-        var request = curmechanism.request();
+        var request = curmechanism.request(); // запрос от механизма
         switch(request){
           case "EXIT":
             curmechanism = null;
@@ -208,7 +214,7 @@ async function stateClient(newevent) {
         break;
     }// switch
 
-}// stateClientMOXA
+}// stateClient
 
 function connect(oldclient){
     if ( oldclient !== null /*&& oldclient.connecting*/ ) oldclient.destroy();
